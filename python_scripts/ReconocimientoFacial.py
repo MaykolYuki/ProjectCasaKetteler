@@ -1,12 +1,25 @@
-from deepface import DeepFace
+# -----------------------------------------------------------------
+# SILENCIAR ADVERTENCIAS DE TENSORFLOW (DEBE SER LO PRIMERO)
+# -----------------------------------------------------------------
 import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Bloquea INFO y WARNING de TensorFlow
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+# -----------------------------------------------------------------
+
+import tf_keras as keras  # Asegura la carga del backend en el venv oficial
+import cv2  # Tu OpenCV headless listo para procesamiento de imágenes
+# -----------------------------------------------------------------
+
+from deepface import DeepFace
 import json
 import sys
 
 
 def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
+    # -----------------------------
+    # FASE 1: ANTI-SPOOFING
+    # -----------------------------
     try:
-
         analisis = DeepFace.extract_faces(
             img_path=ruta_imagen_capturada,
             anti_spoofing=True,
@@ -40,7 +53,6 @@ def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
     # FASE 2: VERIFICACIÓN
     # -----------------------------
     try:
-
         if not os.path.exists(directorio_usuario):
             return {
                 "success": False,
@@ -64,14 +76,12 @@ def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
 
         # Recorremos fotos del usuario
         for archivo in imagenes:
-
             ruta_referencia = os.path.join(
                 directorio_usuario,
                 archivo
             )
 
             try:
-
                 resultado = DeepFace.verify(
                     img1_path=ruta_imagen_capturada,
                     img2_path=ruta_referencia,
@@ -107,11 +117,8 @@ def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
 # PUNTO DE ENTRADA
 # -----------------------------------
 if __name__ == "__main__":
-
     try:
-
         if len(sys.argv) < 3:
-
             print(json.dumps({
                 "success": False,
                 "verified": False,
@@ -122,7 +129,6 @@ if __name__ == "__main__":
                     "<directorio_usuario>"
                 )
             }))
-
             sys.exit(1)
 
         ruta_imagen = sys.argv[1]
@@ -136,11 +142,9 @@ if __name__ == "__main__":
         print(json.dumps(resultado))
 
     except Exception as e:
-
         print(json.dumps({
             "success": False,
             "verified": False,
             "error": str(e)
         }))
-
         sys.exit(1)
