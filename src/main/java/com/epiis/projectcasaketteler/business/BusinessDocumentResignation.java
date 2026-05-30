@@ -23,44 +23,50 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 public class BusinessDocumentResignation {
 	@Autowired
 	RepositoryDocumentResignation repositoryDocumentResignation;
-	
+
 	@Autowired
 	RepositoryUser repositoryUser;
-	
-	private String storageDir = "storage"; 
-	
-	public ResponseDocumentResignationInsert  insert(RequestDocumentResignationInsert request) throws Exception {
+
+	private String storageDir = "storage";
+
+	public ResponseDocumentResignationInsert insert(RequestDocumentResignationInsert request) throws Exception {
 		ResponseDocumentResignationInsert response = new ResponseDocumentResignationInsert();
-		
+
 		Optional<EntityUser> optional = repositoryUser.findById(request.getIdUser());
-		
+
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Error: Usuario no encontrado");
+			return response;
+		}
+
 		EntityUser entityUser = optional.get();
-		
+
 		Path storagePath = Paths.get(storageDir + "/DocumentResignation/" + entityUser.getFirstName());
-		
+
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
 		}
-		
+
 		MultipartFile file = request.getFile();
-		
+
 		if (file != null) {
 			String originalFileName = file.getOriginalFilename();
-			
+
 			String extension = "";
-			
+
 			if (originalFileName != null && originalFileName.contains(".")) {
 				extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
 			}
-			
+
 			String fileName = UUID.randomUUID().toString();
-			
+
 			Path filePath = storagePath.resolve(fileName);
-			
+
 			Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-			
+
 			EntityDocumentResignation entityDocumentResignation = new EntityDocumentResignation();
-			
+
 			entityDocumentResignation.setIdDocumentResignation(UUID.randomUUID().toString());
 			entityDocumentResignation.setParentUser(entityUser);
 			entityDocumentResignation.setNameDocumentResignation(fileName);
@@ -68,13 +74,13 @@ public class BusinessDocumentResignation {
 			entityDocumentResignation.setStatus(true);
 			entityDocumentResignation.setCreated_at(new java.sql.Date(new Date().getTime()));
 			entityDocumentResignation.setUpdated_at(entityDocumentResignation.getCreated_at());
-			
+
 			repositoryDocumentResignation.save(entityDocumentResignation);
 		}
-		
+
 		response.success();
 		response.getListMessage().add("Documento de Renuncia Registrado Exitosamente");
-		
+
 		return response;
 	}
 }

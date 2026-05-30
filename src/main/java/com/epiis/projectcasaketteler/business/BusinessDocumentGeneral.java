@@ -23,44 +23,50 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 public class BusinessDocumentGeneral {
 	@Autowired
 	RepositoryDocumentGeneral repositoryDocumentGeneral;
-	
+
 	@Autowired
 	RepositoryUser repositoryUser;
-	
+
 	private String storageDir = "storage";
-	
+
 	public ResponseDocumentGeneralInsert insert(RequestDocumentGeneralInsert request) throws Exception {
 		ResponseDocumentGeneralInsert response = new ResponseDocumentGeneralInsert();
-		
+
 		Optional<EntityUser> optional = repositoryUser.findById(request.getIdUser());
-		
+
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Error: Usuario no encontrado");
+			return response;
+		}
+
 		EntityUser entityUser = optional.get();
-		
+
 		Path storagePath = Paths.get(storageDir + "/DocumentGenral/" + entityUser.getFirstName() + request.getType());
-		
+
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
 		}
-		
+
 		MultipartFile file = request.getFile();
-		
+
 		if (file != null) {
 			String originalFileName = file.getOriginalFilename();
-			
+
 			String extension = "";
-			
+
 			if (originalFileName != null && originalFileName.contains(".")) {
 				extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
 			}
-			
+
 			String fileName = UUID.randomUUID().toString();
-			
+
 			Path filePath = storagePath.resolve(fileName);
-			
+
 			Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-			
+
 			EntityDocumentGeneral entityDocumentGeneral = new EntityDocumentGeneral();
-			
+
 			entityDocumentGeneral.setIdDocumentGeneral(UUID.randomUUID().toString());
 			entityDocumentGeneral.setParentUser(entityUser);
 			entityDocumentGeneral.setType(request.getType());
@@ -68,13 +74,13 @@ public class BusinessDocumentGeneral {
 			entityDocumentGeneral.setExtensionDocumentGeneral(extension);
 			entityDocumentGeneral.setCreated_at(new java.sql.Date(new Date().getTime()));
 			entityDocumentGeneral.setUpdated_at(entityDocumentGeneral.getCreated_at());
-			
+
 			repositoryDocumentGeneral.save(entityDocumentGeneral);
 		}
-		
+
 		response.success();
 		response.getListMessage().add("Documentos Generales Registrados Correctamente");
-		
+
 		return response;
 	}
 }

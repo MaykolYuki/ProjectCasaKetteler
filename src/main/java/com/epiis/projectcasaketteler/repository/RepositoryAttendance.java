@@ -8,13 +8,16 @@ import com.epiis.projectcasaketteler.entity.EntityAttendance;
 import com.epiis.projectcasaketteler.entity.EntityUser;
 
 import java.util.Optional;
+import java.util.List;
 
 public interface RepositoryAttendance extends JpaRepository<EntityAttendance, String> {
 
 	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :entityUser ORDER BY a.created_at DESC")
 	Optional<EntityAttendance> findTopByParentUserOrderByCreated_atDesc(@Param("entityUser") EntityUser entityUser);
 
-	// Método alternativo usando limit nativo
+	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :user ORDER BY a.created_at DESC")
+	List<EntityAttendance> findByParentUserOrderByCreated_atDesc(@Param("user") EntityUser user);
+
 	default Optional<EntityAttendance> findLastAttendanceByUser(EntityUser user) {
 		return findTopByParentUserOrderByCreated_atDesc(user);
 	}

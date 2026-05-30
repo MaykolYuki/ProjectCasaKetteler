@@ -40,8 +40,7 @@ public class SecurityConfig {
 								"/casaketteler/indexresidence",
 								"/casaketteler/showresidence/**",
 								"/casaketteler/network/**",
-								"/casaketteler/verify",
-								"/casaketteler/deactivateuser/**" // <-- Para probar
+								"/casaketteler/verify"
 
 						).permitAll()
 
@@ -55,7 +54,7 @@ public class SecurityConfig {
 						// ============================================
 						.requestMatchers(
 								"/casaketteler/indexadmin",
-
+								"/casaketteler/deactivateuser/**", // <-- Para probar
 								"/casaketteler/deleteuser/**", // <-- AGREGAR ESTO
 								"/casaketteler/updateuser/**" // <-- AGREGAR ESTO
 						).hasAnyAuthority("SUPER_ADMIN", "ADMIN")

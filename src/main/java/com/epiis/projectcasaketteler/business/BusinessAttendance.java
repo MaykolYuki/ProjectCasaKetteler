@@ -3,8 +3,11 @@ package com.epiis.projectcasaketteler.business;
 import java.io.File;
 import java.net.InetAddress;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -168,5 +171,29 @@ public class BusinessAttendance {
 
         // Comparación exacta después de normalizar
         return normalizedIp1.equals(normalizedIp2);
+    }
+
+    public Map<String, Object> getByUser(String userId) {
+        Map<String, Object> res = new HashMap<>();
+
+        Optional<EntityUser> optionalUser = repositoryUser.findById(userId);
+
+        if (!optionalUser.isPresent()) {
+            res.put("type", "error");
+            res.put("message", "Usuario no encontrado");
+            res.put("data", null);
+            return res;
+        }
+
+        EntityUser entityUser = optionalUser.get();
+
+        List<EntityAttendance> attendances = repositoryAttendance
+                .findByParentUserOrderByCreated_atDesc(entityUser);
+
+        res.put("type", "success");
+        res.put("message", "Asistencias obtenidas correctamente");
+        res.put("data", attendances);
+
+        return res;
     }
 }

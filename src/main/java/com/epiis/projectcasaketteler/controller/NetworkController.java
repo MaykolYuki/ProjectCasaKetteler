@@ -2,15 +2,24 @@ package com.epiis.projectcasaketteler.controller;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.epiis.projectcasaketteler.entity.EntityResidence;
+import com.epiis.projectcasaketteler.repository.RepositoryResidence;
 
 @RestController
 @RequestMapping(path = "casaketteler")
 public class NetworkController {
+
+    @Autowired
+    RepositoryResidence repositoryResidence;
 
     // Este endpoint devuelve la configuración de red esperada
     // El frontend debe comparar con el SSID real del dispositivo
@@ -32,12 +41,23 @@ public class NetworkController {
 
     // Endpoint para verificar si el SSID proporcionado es válido
     @GetMapping(path = "network/verify")
-    public ResponseEntity<Map<String, Object>> verifyNetwork(String ssid) {
+    public ResponseEntity<Map<String, Object>> verifyNetwork(
+            @RequestParam String ssid,
+            @RequestParam String idResidence) {
+
         Map<String, Object> response = new HashMap<>();
 
-        String expectedSSID = "CasaKetteler_WiFi"; // Debe venir de BD/configuración
+        Optional<EntityResidence> optional = repositoryResidence.findById(idResidence);
 
-        boolean isValid = expectedSSID.equals(ssid);
+        if (!optional.isPresent()) {
+            response.put("success", false);
+            response.put("isValid", false);
+            response.put("message", "Residencia no encontrada");
+            return ResponseEntity.ok(response);
+        }
+
+        String expectedSSID = optional.get().getWifiSsid();
+        boolean isValid = expectedSSID != null && expectedSSID.equals(ssid);
 
         response.put("success", true);
         response.put("isValid", isValid);
