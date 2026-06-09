@@ -22,24 +22,24 @@ public class EntityDocumentGeneral {
 	@Id
 	@Column(name = "idDocumentGeneral")
 	private String idDocumentGeneral;
-	
+
 	@JsonBackReference
 	@JoinColumn(name = "idUser")
 	@ManyToOne(fetch = FetchType.LAZY)
 	private EntityUser parentUser;
-	
+
 	@Column(name = "type")
 	private String type;
-	
+
 	@Column(name = "nameDocumentGeneral")
 	private String nameDocumentGeneral;
-	
+
 	@Column(name = "extensionDocumentGeneral")
 	private String extensionDocumentGeneral;
-	
+
 	@Column(name = "created_at")
 	private Date created_at;
-	
+
 	@Column(name = "updated_at")
 	private Date updated_at;
 }

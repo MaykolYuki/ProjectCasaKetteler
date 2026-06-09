@@ -226,6 +226,42 @@ public class BusinessUser {
 		}
 	}
 
+	public ResponseUserInsert resetPassword(String idUser) {
+		ResponseUserInsert response = new ResponseUserInsert();
+
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+
+		if (!optional.isPresent()) {
+			response.setType("error");
+			response.getListMessage().add("Usuario no encontrado");
+			return response;
+		}
+
+		EntityUser user = optional.get();
+		String nuevaTemporalPassword = generateTemporalPassword();
+
+		user.setPassword(passwordEncoder().encode(nuevaTemporalPassword));
+		user.setFirstLogin(true);
+		user.setTemporalPassword(nuevaTemporalPassword);
+
+		repositoryUser.save(user);
+
+		try {
+			emailHelper.sendTemporaryCredentials(
+					user.getEmail(),
+					user.getEmail(),
+					nuevaTemporalPassword);
+		} catch (Exception e) {
+			System.err.println("Error enviando email: " + e.getMessage());
+		}
+
+		response.setType("success");
+		response.setTemporalPassword(nuevaTemporalPassword);
+		response.getListMessage().add("Contraseña restablecida y enviada por email");
+
+		return response;
+	}
+
 	// CAMBIAR CONTRASEÑA
 	public ResponseUserUpdatePassword changePassword(String userId, RequestChangePassword request) {
 		ResponseUserUpdatePassword response = new ResponseUserUpdatePassword();

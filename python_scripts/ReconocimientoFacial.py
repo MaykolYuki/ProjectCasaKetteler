@@ -2,14 +2,12 @@
 # SILENCIAR ADVERTENCIAS DE TENSORFLOW (DEBE SER LO PRIMERO)
 # -----------------------------------------------------------------
 import os
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Bloquea INFO y WARNING de TensorFlow
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 # -----------------------------------------------------------------
 
-import tf_keras as keras  # Asegura la carga del backend en el venv oficial
-import cv2  # Tu OpenCV headless listo para procesamiento de imágenes
-# -----------------------------------------------------------------
-
+import tf_keras as keras
+import cv2
 from deepface import DeepFace
 import json
 import sys
@@ -74,13 +72,10 @@ def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
                 "error": "El usuario no tiene imágenes registradas"
             }
 
-        # Recorremos fotos del usuario
-        for archivo in imagenes:
-            ruta_referencia = os.path.join(
-                directorio_usuario,
-                archivo
-            )
+        mejor_similitud = 0.0
 
+        for archivo in imagenes:
+            ruta_referencia = os.path.join(directorio_usuario, archivo)
             try:
                 resultado = DeepFace.verify(
                     img1_path=ruta_imagen_capturada,
@@ -89,20 +84,28 @@ def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
                     enforce_detection=False
                 )
 
-                # Coincidencia encontrada
+                distancia = resultado["distance"]
+                umbral = resultado["threshold"]
+                similarity = round((1 - distancia / umbral) * 100, 2)
+                similarity = max(0.0, min(100.0, similarity))
+
+                if similarity > mejor_similitud:
+                    mejor_similitud = similarity
+
                 if resultado["verified"]:
                     return {
                         "success": True,
-                        "verified": True
+                        "verified": True,
+                        "similarity": similarity
                     }
 
             except Exception:
                 continue
 
-        # Ninguna coincidencia
         return {
             "success": True,
-            "verified": False
+            "verified": False,
+            "similarity": mejor_similitud
         }
 
     except Exception as e:

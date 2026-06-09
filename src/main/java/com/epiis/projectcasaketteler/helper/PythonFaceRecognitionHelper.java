@@ -1,6 +1,8 @@
 package com.epiis.projectcasaketteler.helper;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 
 import org.springframework.stereotype.Component;
@@ -12,26 +14,17 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class PythonFaceRecognitionHelper {
 
-    // ---------------------------------------------------------------------------------
-    // ACTUALIZADO: Ahora apunta al ejecutable de Python dentro de venv_oficial
-    // nativo
-    // ---------------------------------------------------------------------------------
     private static final String PYTHON_PATH = "C:/Users/yerry/Documents/Ingenieria de Software/BackendCasaKetteler/ProjectCasaKetteler/python_scripts/venv_perfecto/Scripts/python.exe";
-
     private static final String SCRIPT_PATH = "python_scripts/ReconocimientoFacial.py";
 
     public ResponseFaceVerification verificarRostro(String rutaImagen, String idUser) {
         try {
-            // 1. Convertimos las rutas a archivos físicos reales de Java para sacar su ruta
-            // absoluta
             java.io.File archivoCaptura = new java.io.File(rutaImagen);
             java.io.File archivoDirectorioUsuario = new java.io.File("storage/Photo/" + idUser);
 
             String rutaAbsolutaCaptura = archivoCaptura.getAbsolutePath();
             String rutaAbsolutaUsuario = archivoDirectorioUsuario.getAbsolutePath();
 
-            // 2. Le pasamos las rutas absolutas completas a Python (ej:
-            // C:/Users/yerry/.../storage/captura.jpg)
             ProcessBuilder processBuilder = new ProcessBuilder(
                     PYTHON_PATH,
                     SCRIPT_PATH,
@@ -65,6 +58,35 @@ public class PythonFaceRecognitionHelper {
             error.setVerified(false);
             error.setError(e.getMessage());
             return error;
+        }
+    }
+
+    public ResponseFaceVerification verificarRostroBase64(String base64Image, String idUser) {
+        File tempFile = null;
+        try {
+            byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Image);
+
+            String tempDir = "temp/";
+            new File(tempDir).mkdirs();
+
+            String fileName = "sync_" + idUser + "_" + System.currentTimeMillis() + ".jpg";
+            tempFile = new File(tempDir + fileName);
+
+            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                fos.write(imageBytes);
+            }
+
+            return verificarRostro(tempFile.getAbsolutePath(), idUser);
+
+        } catch (Exception e) {
+            ResponseFaceVerification error = new ResponseFaceVerification();
+            error.setVerified(false);
+            error.setError("Error decodificando imagen: " + e.getMessage());
+            return error;
+        } finally {
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
         }
     }
     /**

@@ -120,4 +120,10 @@ public class UserController {
 		}
 		return null;
 	}
+
+	@PostMapping(path = "resetpassword/{idUser}")
+	public ResponseEntity<ResponseUserInsert> resetPassword(@PathVariable String idUser) {
+		ResponseUserInsert response = businessUser.resetPassword(idUser);
+		return ResponseEntity.ok(response);
+	}
 }

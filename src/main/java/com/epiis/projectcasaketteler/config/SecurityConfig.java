@@ -56,8 +56,10 @@ public class SecurityConfig {
 								"/casaketteler/indexadmin",
 								"/casaketteler/deactivateuser/**", // <-- Para probar
 								"/casaketteler/deleteuser/**", // <-- AGREGAR ESTO
-								"/casaketteler/updateuser/**" // <-- AGREGAR ESTO
-						).hasAnyAuthority("SUPER_ADMIN", "ADMIN")
+								"/casaketteler/updateuser/**", // <-- AGREGAR ESTO
+								"/casaketteler/resetpassword/**", // <-- AGREGAR ESTO
+								"/casaketteler/registerphoto")
+						.hasAnyAuthority("SUPER_ADMIN", "ADMIN")
 
 						// ============================================
 						// RESTO requieren autenticación (cualquier rol)

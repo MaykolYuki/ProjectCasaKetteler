@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
+import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
 import com.epiis.projectcasaketteler.entity.EntityUser;
@@ -60,10 +61,13 @@ public class BusinessAttendance {
 
             ResponseFaceVerification responsetoPython = pythonFaceRecognitionHelper.verificarRostro(rutaImagen,
                     request.getIdUser());
-            if (!responsetoPython.isVerified()) {
+
+            // RF-12: umbral de similitud ≥85%
+            if (!responsetoPython.isVerified() || responsetoPython.getSimilarity() < 85.0) {
                 responsetoPython.error();
-                responsetoPython.getListMessage()
-                        .add("Error: Algo salió mal con el reconocimiento facial. Vuelve a intentarlo.");
+                responsetoPython.getListMessage().add(
+                        "Error: Rostro no reconocido. Similitud: " +
+                                String.format("%.1f", responsetoPython.getSimilarity()) + "% (mínimo 85%).");
                 return responsetoPython;
             }
 
@@ -88,21 +92,39 @@ public class BusinessAttendance {
             System.out.println("isSameNetwork (residencia): " + isSameNetwork(localIpHost, parentResidenceIp));
             System.out.println("isSameNetwork (usuario): " + isSameNetwork(requestIp, userLocalAddress));
             // -- FIN DEPURACIÓN --//
-
-            if (!isSameNetwork(localIpHost, parentResidenceIp)) {
-                response.error();
-                response.getListMessage().add("Error: La Dirección WIFI de la residencia es incorrecta.");
-                return response;
-            }
-
-            if (!isSameNetwork(requestIp, userLocalAddress)) {
-                response.error();
-                response.getListMessage().add("Error: Este celular no le pertenece o no está en la red correcta.");
-                return response;
-            }
-
+            /*
+             * if (!isSameNetwork(localIpHost, parentResidenceIp)) {
+             * response.error();
+             * response.getListMessage().
+             * add("Error: La Dirección WIFI de la residencia es incorrecta.");
+             * return response;
+             * }
+             * 
+             * if (!isSameNetwork(requestIp, userLocalAddress)) {
+             * response.error();
+             * response.getListMessage().
+             * add("Error: Este celular no le pertenece o no está en la red correcta.");
+             * return response;
+             * }
+             */
             Optional<EntityAttendance> optionalAttendance = repositoryAttendance
                     .findTopByParentUserOrderByCreated_atDesc(entityUser);
+
+            // RF-10: cooldown de 5 minutos entre registros
+            if (optionalAttendance.isPresent()) {
+                EntityAttendance lastAttendance = optionalAttendance.get();
+
+                Date lastTime = lastAttendance.getCreated_at();
+                long diffMinutes = (new Date().getTime() - lastTime.getTime()) / (1000 * 60);
+
+                if (diffMinutes < 5) {
+                    long restante = 5 - diffMinutes;
+                    responsetoPython.error();
+                    responsetoPython.getListMessage().add(
+                            "Error: Debes esperar " + restante + " minuto(s) para registrar nuevamente.");
+                    return responsetoPython;
+                }
+            }
 
             if (optionalAttendance.isPresent()) {
                 EntityAttendance lastAttendance = optionalAttendance.get();
@@ -143,6 +165,77 @@ public class BusinessAttendance {
                 tempFile.delete();
             }
         }
+    }
+
+    public Map<String, Object> syncOfflineRecords(String userId, List<RequestAttendanceSync> records) {
+        Map<String, Object> res = new HashMap<>();
+        int procesados = 0;
+        int rechazados = 0;
+
+        for (RequestAttendanceSync record : records) {
+            try {
+                // 1. Re-verificar con Python
+                ResponseFaceVerification serverResult = pythonFaceRecognitionHelper
+                        .verificarRostroBase64(record.getBase64Image(), record.getIdUser());
+
+                // 2. Aplicar umbral del servidor (RF-12)
+                if (!serverResult.isVerified() || serverResult.getSimilarity() < 85.0) {
+                    rechazados++;
+                    continue;
+                }
+
+                // 3. Verificar duplicado (mismo usuario, misma hora ±1 min)
+                Optional<EntityUser> optionalUser = repositoryUser.findById(record.getIdUser());
+                if (!optionalUser.isPresent()) {
+                    rechazados++;
+                    continue;
+                }
+                EntityUser entityUser = optionalUser.get();
+
+                if (isDuplicateSync(entityUser, record.getRecordedAt())) {
+                    rechazados++;
+                    continue;
+                }
+
+                // 4. Guardar con metadatos de auditoría
+                EntityAttendance attendance = new EntityAttendance();
+                attendance.setIdAtendance(UUID.randomUUID().toString());
+                attendance.setParentUser(entityUser);
+                attendance.setRecordedAt(record.getRecordedAt());
+                attendance.setSyncedAt(new Date());
+                attendance.setClientSimilarity(record.getClientSimilarity());
+                attendance.setServerSimilarity(serverResult.getSimilarity());
+                attendance.setVerifiedByServer(true);
+                attendance.setStatus(record.getIsEntry());
+                attendance.setCreated_at(new Date());
+
+                repositoryAttendance.save(attendance);
+                procesados++;
+
+            } catch (Exception e) {
+                rechazados++;
+            }
+        }
+
+        res.put("type", "success");
+        res.put("procesados", procesados);
+        res.put("rechazados", rechazados);
+        return res;
+    }
+
+    private boolean isDuplicateSync(EntityUser user, Date recordedAt) {
+        List<EntityAttendance> recientes = repositoryAttendance
+                .findByParentUserOrderByCreated_atDesc(user);
+
+        for (EntityAttendance a : recientes) {
+            if (a.getRecordedAt() == null)
+                continue;
+            long diffMs = Math.abs(a.getRecordedAt().getTime() - recordedAt.getTime());
+            long diffMin = diffMs / (1000 * 60);
+            if (diffMin <= 1)
+                return true;
+        }
+        return false;
     }
 
     private String normalizeIpAddress(String ip) {

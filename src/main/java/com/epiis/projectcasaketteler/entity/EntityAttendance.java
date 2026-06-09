@@ -45,4 +45,19 @@ public class EntityAttendance {
 
 	@Column(name = "updated_at")
 	private Date updated_at;
+
+	@Column(name = "recordedAt")
+	private Date recordedAt; // hora real cuando ocurrió offline
+
+	@Column(name = "syncedAt")
+	private Date syncedAt; // hora cuando llegó al servidor
+
+	@Column(name = "verifiedByServer")
+	private Boolean verifiedByServer = false; // confirmación Python
+
+	@Column(name = "clientSimilarity")
+	private Double clientSimilarity; // similitud reportada por el móvil
+
+	@Column(name = "serverSimilarity")
+	private Double serverSimilarity; // similitud confirmada por Python
 }
