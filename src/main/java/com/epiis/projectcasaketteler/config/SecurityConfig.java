@@ -54,13 +54,17 @@ public class SecurityConfig {
 						// ============================================
 						.requestMatchers(
 								"/casaketteler/indexadmin",
-								"/casaketteler/deactivateuser/**", // <-- Para probar
-								"/casaketteler/deleteuser/**", // <-- AGREGAR ESTO
-								"/casaketteler/updateuser/**", // <-- AGREGAR ESTO
-								"/casaketteler/resetpassword/**", // <-- AGREGAR ESTO
-								"/casaketteler/registerphoto")
+								"/casaketteler/deactivateuser/**",
+								"/casaketteler/deleteuser/**",
+								"/casaketteler/updateuser/**",
+								"/casaketteler/resetpassword/**",
+								"/casaketteler/registerphoto",
+								"/casaketteler/documents/**", // listar y descargar documentos
+								"/casaketteler/resignation/**", // gestión renuncia admin
+								"/casaketteler/registerdocumentgeneral",
+								"/casaketteler/registerdocumententer",
+								"/casaketteler/resignation/**")
 						.hasAnyAuthority("SUPER_ADMIN", "ADMIN")
-
 						// ============================================
 						// RESTO requieren autenticación (cualquier rol)
 						// ============================================

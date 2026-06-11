@@ -16,6 +16,7 @@ import com.epiis.projectcasaketteler.dto.request.RequestDocumentEnterInsert;
 import com.epiis.projectcasaketteler.dto.response.ResponseDocumentEnterInsert;
 import com.epiis.projectcasaketteler.entity.EntityDocumentEnter;
 import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.helper.DocumentValidationHelper;
 import com.epiis.projectcasaketteler.repository.RepositoryDocumentEnter;
 import com.epiis.projectcasaketteler.repository.RepositoryUser;
 
@@ -26,6 +27,9 @@ public class BusinessDocumentEnter {
 
 	@Autowired
 	RepositoryUser repositoryUser;
+
+	@Autowired
+	DocumentValidationHelper documentValidationHelper;
 
 	private String storageDir = "storage";
 
@@ -48,6 +52,13 @@ public class BusinessDocumentEnter {
 		}
 
 		MultipartFile file = request.getFile();
+
+		String validationError = documentValidationHelper.validate(file);
+		if (validationError != null) {
+			response.error();
+			response.getListMessage().add("Error: " + validationError);
+			return response;
+		}
 
 		if (file != null) {
 			String originalFileName = file.getOriginalFilename();

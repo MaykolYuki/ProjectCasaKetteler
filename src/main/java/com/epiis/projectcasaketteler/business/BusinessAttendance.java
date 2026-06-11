@@ -92,21 +92,19 @@ public class BusinessAttendance {
             System.out.println("isSameNetwork (residencia): " + isSameNetwork(localIpHost, parentResidenceIp));
             System.out.println("isSameNetwork (usuario): " + isSameNetwork(requestIp, userLocalAddress));
             // -- FIN DEPURACIÓN --//
-            /*
-             * if (!isSameNetwork(localIpHost, parentResidenceIp)) {
-             * response.error();
-             * response.getListMessage().
-             * add("Error: La Dirección WIFI de la residencia es incorrecta.");
-             * return response;
-             * }
-             * 
-             * if (!isSameNetwork(requestIp, userLocalAddress)) {
-             * response.error();
-             * response.getListMessage().
-             * add("Error: Este celular no le pertenece o no está en la red correcta.");
-             * return response;
-             * }
-             */
+
+            if (!isSameNetwork(localIpHost, parentResidenceIp)) {
+                response.error();
+                response.getListMessage().add("Error: La Dirección WIFI de la residencia es incorrecta.");
+                return response;
+            }
+
+            if (!isSameNetwork(requestIp, userLocalAddress)) {
+                response.error();
+                response.getListMessage().add("Error: Este celular no le pertenece o no está en la red correcta.");
+                return response;
+            }
+
             Optional<EntityAttendance> optionalAttendance = repositoryAttendance
                     .findTopByParentUserOrderByCreated_atDesc(entityUser);
 
