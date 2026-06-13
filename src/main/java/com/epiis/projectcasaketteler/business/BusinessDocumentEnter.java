@@ -22,6 +22,7 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 
 @Service
 public class BusinessDocumentEnter {
+
 	@Autowired
 	RepositoryDocumentEnter repositoryDocumentEnter;
 
@@ -37,7 +38,6 @@ public class BusinessDocumentEnter {
 		ResponseDocumentEnterInsert response = new ResponseDocumentEnterInsert();
 
 		Optional<EntityUser> optional = repositoryUser.findById(request.getIdUser());
-
 		if (!optional.isPresent()) {
 			response.error();
 			response.getListMessage().add("Error: Usuario no encontrado");
@@ -45,13 +45,12 @@ public class BusinessDocumentEnter {
 		}
 		EntityUser entityUser = optional.get();
 
-		Path storagePath = Paths.get(storageDir + "/DocumentEnter/" + entityUser.getFirstName());
-
-		if (!Files.exists(storagePath)) {
-			Files.createDirectories(storagePath);
-		}
-
 		MultipartFile file = request.getFile();
+		if (file == null || file.isEmpty()) {
+			response.error();
+			response.getListMessage().add("Error: No se ha adjuntado ningún archivo o está vacío");
+			return response;
+		}
 
 		String validationError = documentValidationHelper.validate(file);
 		if (validationError != null) {
@@ -60,34 +59,34 @@ public class BusinessDocumentEnter {
 			return response;
 		}
 
-		if (file != null) {
-			String originalFileName = file.getOriginalFilename();
-
-			String extension = "";
-
-			if (originalFileName != null && originalFileName.contains(".")) {
-				extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
-			}
-
-			String fileName = UUID.randomUUID().toString();
-
-			Path filePath = storagePath.resolve(fileName);
-
-			Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-
-			EntityDocumentEnter entityDocumentEnter = new EntityDocumentEnter();
-
-			entityDocumentEnter.setIdDocumentEnter(UUID.randomUUID().toString());
-			entityDocumentEnter.setParentUser(entityUser);
-			entityDocumentEnter.setNameDocumentEnter(fileName);
-			entityDocumentEnter.setExtensionDocumentEnter(extension);
-			entityDocumentEnter.setCreated_at(new java.sql.Date(new Date().getTime()));
-
-			repositoryDocumentEnter.save(entityDocumentEnter);
+		Path storagePath = Paths.get(storageDir + "/DocumentEnter/" + entityUser.getFirstName());
+		if (!Files.exists(storagePath)) {
+			Files.createDirectories(storagePath);
 		}
 
+		String originalFileName = file.getOriginalFilename();
+		String extension = "";
+		if (originalFileName != null && originalFileName.contains(".")) {
+			extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
+		}
+
+		String fileNameUUID = UUID.randomUUID().toString();
+		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+
+		Path filePath = storagePath.resolve(filePhysicalName);
+		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+		EntityDocumentEnter entityDocumentEnter = new EntityDocumentEnter();
+		entityDocumentEnter.setIdDocumentEnter(fileNameUUID); 
+		entityDocumentEnter.setParentUser(entityUser);
+		entityDocumentEnter.setNameDocumentEnter(filePhysicalName); 
+		entityDocumentEnter.setExtensionDocumentEnter(extension);
+		entityDocumentEnter.setCreated_at(new java.sql.Date(new Date().getTime()));
+
+		repositoryDocumentEnter.save(entityDocumentEnter);
+
 		response.success();
-		response.getListMessage().add("Documentos de Entrada Registrados Exitosamente");
+		response.getListMessage().add("Documento de Entrada Registrado Exitosamente");
 
 		return response;
 	}

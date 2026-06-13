@@ -25,6 +25,7 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 
 @Service
 public class BusinessDocumentGeneral {
+
 	@Autowired
 	RepositoryDocumentGeneral repositoryDocumentGeneral;
 
@@ -49,7 +50,6 @@ public class BusinessDocumentGeneral {
 
 		EntityUser entityUser = optional.get();
 
-		// RF-20: restricción mensual para constancia de pago
 		if ("PAGO".equalsIgnoreCase(request.getType())) {
 			String period = getCurrentMonthPeriod();
 			Optional<EntityDocumentGeneral> existing = repositoryDocumentGeneral
@@ -62,7 +62,6 @@ public class BusinessDocumentGeneral {
 			}
 		}
 
-		// RF-22: restricción semestral para constancia de notas
 		if ("NOTAS".equalsIgnoreCase(request.getType())) {
 			String period = getCurrentSemesterPeriod();
 			Optional<EntityDocumentGeneral> existing = repositoryDocumentGeneral
@@ -75,13 +74,12 @@ public class BusinessDocumentGeneral {
 			}
 		}
 
-		Path storagePath = Paths.get(storageDir + "/DocumentGenral/" + entityUser.getFirstName() + request.getType());
-
-		if (!Files.exists(storagePath)) {
-			Files.createDirectories(storagePath);
-		}
-
 		MultipartFile file = request.getFile();
+		if (file == null || file.isEmpty()) {
+			response.error();
+			response.getListMessage().add("Error: No se ha adjuntado ningún archivo o está vacío");
+			return response;
+		}
 
 		String validationError = documentValidationHelper.validate(file);
 		if (validationError != null) {
@@ -90,36 +88,38 @@ public class BusinessDocumentGeneral {
 			return response;
 		}
 
-		if (file != null) {
-			String originalFileName = file.getOriginalFilename();
+		Path storagePath = Paths.get(storageDir + "/DocumentGeneral/" + entityUser.getFirstName() + "/" + request.getType());
 
-			String extension = "";
-
-			if (originalFileName != null && originalFileName.contains(".")) {
-				extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
-			}
-
-			String fileName = UUID.randomUUID().toString();
-
-			Path filePath = storagePath.resolve(fileName);
-
-			Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-
-			EntityDocumentGeneral entityDocumentGeneral = new EntityDocumentGeneral();
-
-			entityDocumentGeneral.setIdDocumentGeneral(UUID.randomUUID().toString());
-			entityDocumentGeneral.setParentUser(entityUser);
-			entityDocumentGeneral.setType(request.getType());
-			entityDocumentGeneral.setPeriod(
-					"PAGO".equalsIgnoreCase(request.getType()) ? getCurrentMonthPeriod()
-							: "NOTAS".equalsIgnoreCase(request.getType()) ? getCurrentSemesterPeriod() : null);
-			entityDocumentGeneral.setNameDocumentGeneral(fileName);
-			entityDocumentGeneral.setExtensionDocumentGeneral(extension);
-			entityDocumentGeneral.setCreated_at(new java.sql.Date(new Date().getTime()));
-			entityDocumentGeneral.setUpdated_at(entityDocumentGeneral.getCreated_at());
-
-			repositoryDocumentGeneral.save(entityDocumentGeneral);
+		if (!Files.exists(storagePath)) {
+			Files.createDirectories(storagePath);
 		}
+
+		String originalFileName = file.getOriginalFilename();
+		String extension = "";
+		if (originalFileName != null && originalFileName.contains(".")) {
+			extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
+		}
+
+		String fileNameUUID = UUID.randomUUID().toString();
+		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+
+		Path filePath = storagePath.resolve(filePhysicalName);
+		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+		EntityDocumentGeneral entityDocumentGeneral = new EntityDocumentGeneral();
+		entityDocumentGeneral.setIdDocumentGeneral(fileNameUUID);
+		entityDocumentGeneral.setParentUser(entityUser);
+		entityDocumentGeneral.setType(request.getType());
+		entityDocumentGeneral.setPeriod(
+				"PAGO".equalsIgnoreCase(request.getType()) ? getCurrentMonthPeriod()
+						: "NOTAS".equalsIgnoreCase(request.getType()) ? getCurrentSemesterPeriod() : null);
+		
+		entityDocumentGeneral.setNameDocumentGeneral(filePhysicalName);
+		entityDocumentGeneral.setExtensionDocumentGeneral(extension);
+		entityDocumentGeneral.setCreated_at(new java.sql.Date(new Date().getTime()));
+		entityDocumentGeneral.setUpdated_at(entityDocumentGeneral.getCreated_at());
+
+		repositoryDocumentGeneral.save(entityDocumentGeneral);
 
 		response.success();
 		response.getListMessage().add("Documentos Generales Registrados Correctamente");
@@ -127,7 +127,6 @@ public class BusinessDocumentGeneral {
 		return response;
 	}
 
-	// RF-19/23: Admin lista documentos de un residente
 	public Map<String, Object> getByUser(String idUser, String type) {
 		Map<String, Object> res = new HashMap<>();
 
@@ -156,7 +155,6 @@ public class BusinessDocumentGeneral {
 		return res;
 	}
 
-	// RF-24: Residente ve solo sus documentos descargables
 	public Map<String, Object> getMyDownloadableDocuments(String idUser) {
 		Map<String, Object> res = new HashMap<>();
 
@@ -177,7 +175,6 @@ public class BusinessDocumentGeneral {
 		return res;
 	}
 
-	// RF-28/29: Admin actualiza estado y observaciones
 	public ResponseDocumentGeneralInsert updateStatus(String idDocument, String status, String observations) {
 		ResponseDocumentGeneralInsert response = new ResponseDocumentGeneralInsert();
 
@@ -207,8 +204,8 @@ public class BusinessDocumentGeneral {
 		}
 
 		EntityDocumentGeneral doc = optional.get();
-		String filePath = "storage/DocumentGenral/" +
-				doc.getParentUser().getFirstName() +
+		String filePath = storageDir + "/DocumentGeneral/" +
+				doc.getParentUser().getFirstName() + "/" +
 				doc.getType() + "/" +
 				doc.getNameDocumentGeneral();
 
