@@ -49,13 +49,12 @@ public class BusinessDocumentResignation {
 
 		EntityUser entityUser = optional.get();
 
-		Path storagePath = Paths.get(storageDir + "/DocumentResignation/" + entityUser.getFirstName());
-
-		if (!Files.exists(storagePath)) {
-			Files.createDirectories(storagePath);
-		}
-
 		MultipartFile file = request.getFile();
+		if (file == null || file.isEmpty()) {
+			response.error();
+			response.getListMessage().add("Error: No se ha adjuntado ningún archivo o está vacío");
+			return response;
+		}
 
 		String validationError = documentValidationHelper.validate(file);
 		if (validationError != null) {
@@ -64,33 +63,35 @@ public class BusinessDocumentResignation {
 			return response;
 		}
 
-		if (file != null) {
-			String originalFileName = file.getOriginalFilename();
+		Path storagePath = Paths.get(storageDir + "/DocumentResignation/" + entityUser.getFirstName());
 
-			String extension = "";
-
-			if (originalFileName != null && originalFileName.contains(".")) {
-				extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
-			}
-
-			String fileName = UUID.randomUUID().toString();
-
-			Path filePath = storagePath.resolve(fileName);
-
-			Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-
-			EntityDocumentResignation entityDocumentResignation = new EntityDocumentResignation();
-
-			entityDocumentResignation.setIdDocumentResignation(UUID.randomUUID().toString());
-			entityDocumentResignation.setParentUser(entityUser);
-			entityDocumentResignation.setNameDocumentResignation(fileName);
-			entityDocumentResignation.setExtensionDocumentResignation(extension);
-			entityDocumentResignation.setStatus(EntityDocumentResignation.ResignationStatus.PENDIENTE);
-			entityDocumentResignation.setCreated_at(new java.sql.Date(new Date().getTime()));
-			entityDocumentResignation.setUpdated_at(entityDocumentResignation.getCreated_at());
-
-			repositoryDocumentResignation.save(entityDocumentResignation);
+		if (!Files.exists(storagePath)) {
+			Files.createDirectories(storagePath);
 		}
+
+		String originalFileName = file.getOriginalFilename();
+		String extension = "";
+		if (originalFileName != null && originalFileName.contains(".")) {
+			extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
+		}
+
+		String fileNameUUID = UUID.randomUUID().toString();
+		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+
+		Path filePath = storagePath.resolve(filePhysicalName);
+		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+		EntityDocumentResignation entityDocumentResignation = new EntityDocumentResignation();
+
+		entityDocumentResignation.setIdDocumentResignation(fileNameUUID);
+		entityDocumentResignation.setParentUser(entityUser);
+		entityDocumentResignation.setNameDocumentResignation(filePhysicalName);
+		entityDocumentResignation.setExtensionDocumentResignation(extension);
+		entityDocumentResignation.setStatus(EntityDocumentResignation.ResignationStatus.PENDIENTE);
+		entityDocumentResignation.setCreated_at(new java.sql.Date(new Date().getTime()));
+		entityDocumentResignation.setUpdated_at(entityDocumentResignation.getCreated_at());
+
+		repositoryDocumentResignation.save(entityDocumentResignation);
 
 		response.success();
 		response.getListMessage().add("Documento de Renuncia Registrado Exitosamente");
@@ -98,7 +99,6 @@ public class BusinessDocumentResignation {
 		return response;
 	}
 
-	// RF-23: Listar renuncias de un usuario (admin)
 	public Map<String, Object> getByUser(String idUser) {
 		Map<String, Object> res = new HashMap<>();
 
@@ -119,7 +119,6 @@ public class BusinessDocumentResignation {
 		return res;
 	}
 
-	// RF-26: Residente ve su propia renuncia
 	public Map<String, Object> getMyResignation(String idUser) {
 		Map<String, Object> res = new HashMap<>();
 
@@ -140,7 +139,6 @@ public class BusinessDocumentResignation {
 		return res;
 	}
 
-	// RF-28/29: Admin actualiza estado y observaciones
 	public ResponseDocumentResignationInsert updateStatus(
 			String idDocument, String status, String observations) {
 		ResponseDocumentResignationInsert response = new ResponseDocumentResignationInsert();
@@ -172,7 +170,7 @@ public class BusinessDocumentResignation {
 		}
 
 		EntityDocumentResignation doc = optional.get();
-		String filePath = "storage/DocumentResignation/" +
+		String filePath = storageDir + "/DocumentResignation/" +
 				doc.getParentUser().getFirstName() + "/" +
 				doc.getNameDocumentResignation();
 
