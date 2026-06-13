@@ -32,8 +32,14 @@ build/
 ### VS Code ###
 .vscode/
 
-# Python
+
+# Entornos virtuales de Python
+python_scripts/venv_oficial/
+python_scripts/venv_perfecto/
+python_scripts/.venv/
+python_scripts/venv/
 venv/
+**/__pycache__/
 __pycache__/
 *.pyc
 
@@ -43,4 +49,5 @@ __pycache__/
 # Logs
 *.log
 
-python_scripts/venv/
+# Almacenamiento local de imágenes y datos de prueba
+storage/

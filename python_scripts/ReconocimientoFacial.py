@@ -1,12 +1,23 @@
-from deepface import DeepFace
+# -----------------------------------------------------------------
+# SILENCIAR ADVERTENCIAS DE TENSORFLOW (DEBE SER LO PRIMERO)
+# -----------------------------------------------------------------
 import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+# -----------------------------------------------------------------
+
+import tf_keras as keras
+import cv2
+from deepface import DeepFace
 import json
 import sys
 
 
 def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
+    # -----------------------------
+    # FASE 1: ANTI-SPOOFING
+    # -----------------------------
     try:
-
         analisis = DeepFace.extract_faces(
             img_path=ruta_imagen_capturada,
             anti_spoofing=True,
@@ -40,7 +51,6 @@ def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
     # FASE 2: VERIFICACIÓN
     # -----------------------------
     try:
-
         if not os.path.exists(directorio_usuario):
             return {
                 "success": False,
@@ -62,16 +72,11 @@ def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
                 "error": "El usuario no tiene imágenes registradas"
             }
 
-        # Recorremos fotos del usuario
+        mejor_similitud = 0.0
+
         for archivo in imagenes:
-
-            ruta_referencia = os.path.join(
-                directorio_usuario,
-                archivo
-            )
-
+            ruta_referencia = os.path.join(directorio_usuario, archivo)
             try:
-
                 resultado = DeepFace.verify(
                     img1_path=ruta_imagen_capturada,
                     img2_path=ruta_referencia,
@@ -79,20 +84,28 @@ def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
                     enforce_detection=False
                 )
 
-                # Coincidencia encontrada
+                distancia = resultado["distance"]
+                umbral = resultado["threshold"]
+                similarity = round((1 - distancia / umbral) * 100, 2)
+                similarity = max(0.0, min(100.0, similarity))
+
+                if similarity > mejor_similitud:
+                    mejor_similitud = similarity
+
                 if resultado["verified"]:
                     return {
                         "success": True,
-                        "verified": True
+                        "verified": True,
+                        "similarity": similarity
                     }
 
             except Exception:
                 continue
 
-        # Ninguna coincidencia
         return {
             "success": True,
-            "verified": False
+            "verified": False,
+            "similarity": mejor_similitud
         }
 
     except Exception as e:
@@ -107,11 +120,8 @@ def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
 # PUNTO DE ENTRADA
 # -----------------------------------
 if __name__ == "__main__":
-
     try:
-
         if len(sys.argv) < 3:
-
             print(json.dumps({
                 "success": False,
                 "verified": False,
@@ -122,7 +132,6 @@ if __name__ == "__main__":
                     "<directorio_usuario>"
                 )
             }))
-
             sys.exit(1)
 
         ruta_imagen = sys.argv[1]
@@ -136,11 +145,9 @@ if __name__ == "__main__":
         print(json.dumps(resultado))
 
     except Exception as e:
-
         print(json.dumps({
             "success": False,
             "verified": False,
             "error": str(e)
         }))
-
         sys.exit(1)

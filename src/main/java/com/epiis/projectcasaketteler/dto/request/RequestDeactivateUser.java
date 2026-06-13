@@ -5,7 +5,6 @@ import lombok.Setter;
 
 @Setter
 @Getter
-public class RequestResidenceUpdate {
-	private String name;
-	private String wifiSsid;
+public class RequestDeactivateUser {
+    private Boolean active;
 }
