@@ -8,4 +8,5 @@ import lombok.Setter;
 public class RequestResidenceUpdate {
 	private String name;
 	private String wifiSsid;
+	private String wifiBssid;
 }

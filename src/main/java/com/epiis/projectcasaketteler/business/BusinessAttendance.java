@@ -1,7 +1,6 @@
 package com.epiis.projectcasaketteler.business;
 
 import java.io.File;
-import java.net.InetAddress;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Optional;
@@ -17,7 +16,6 @@ import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
 import com.epiis.projectcasaketteler.entity.EntityUser;
-import com.epiis.projectcasaketteler.helper.ObtainIpAddressHelper;
 import com.epiis.projectcasaketteler.helper.PythonFaceRecognitionHelper;
 import com.epiis.projectcasaketteler.repository.RepositoryAttendance;
 import com.epiis.projectcasaketteler.repository.RepositoryUser;
@@ -33,9 +31,6 @@ public class BusinessAttendance {
 
     @Autowired
     PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
-
-    @Autowired
-    ObtainIpAddressHelper obtainIpAddressHelper;
 
     public ResponseFaceVerification insert(RequestAttendanceInsert request) {
         File tempFile = null;
@@ -57,7 +52,7 @@ public class BusinessAttendance {
             // 2. ¡LA SOLUCIÓN AQUÍ! En lugar de transferTo pasándole el File relativo
             // directo a Tomcat,
             // le pasamos la ruta absoluta real que Windows sí entiende al 100%.
-            request.getFile().transferTo(tempFile.getAbsoluteFile()); // <-- AGREGA .getAbsoluteFile()
+            request.getFile().transferTo(tempFile.getAbsoluteFile());
 
             // Obtener usuario PRIMERO
             Optional<EntityUser> optionalUser = repositoryUser.findById(request.getIdUser());
@@ -83,34 +78,32 @@ public class BusinessAttendance {
             }
             responsetoPython.setVerified(true);
 
-            String localIpHost = InetAddress.getLocalHost().getHostAddress();
-            String parentResidenceIp = entityUser.getParentResidence().getIpAddress();
-            String requestIp = obtainIpAddressHelper.getIp();
-            String userLocalAddress = entityUser.getIpAddressLocal();
+            // RF-13/14: Validación de red por BSSID (preferido) o SSID (fallback)
+            String expectedBSSID = entityUser.getParentResidence().getWifiBssid();
+            String expectedSSID = entityUser.getParentResidence().getWifiSsid();
+            String providedBSSID = request.getBssid();
+            String providedSSID = request.getSsid();
 
-            System.out.println("=== DEPURACIÓN DE RED ===");
-            System.out.println("localIpHost: " + localIpHost);
-            System.out.println("parentResidenceIp: " + parentResidenceIp);
-            System.out.println("requestIp: " + requestIp);
-            System.out.println("userLocalAddress: " + userLocalAddress);
-            System.out.println("isSameNetwork (residencia): " + isSameNetwork(localIpHost, parentResidenceIp));
-            System.out.println("isSameNetwork (usuario): " + isSameNetwork(requestIp, userLocalAddress));
-            // -- FIN DEPURACIÓN --//
-            /*
-             * if (!isSameNetwork(localIpHost, parentResidenceIp)) {
-             * response.error();
-             * response.getListMessage().
-             * add("Error: La Dirección WIFI de la residencia es incorrecta.");
-             * return response;
-             * }
-             * 
-             * if (!isSameNetwork(requestIp, userLocalAddress)) {
-             * response.error();
-             * response.getListMessage().
-             * add("Error: Este celular no le pertenece o no está en la red correcta.");
-             * return response;
-             * }
-             */
+            boolean redValida = false;
+
+            if (expectedBSSID != null && !expectedBSSID.isEmpty()) {
+                // Si la residencia tiene BSSID configurado, es obligatorio que coincida
+                redValida = providedBSSID != null && expectedBSSID.equalsIgnoreCase(providedBSSID);
+            } else if (expectedSSID != null && !expectedSSID.isEmpty()) {
+                // Fallback a SSID si no hay BSSID configurado
+                redValida = providedSSID != null && expectedSSID.equals(providedSSID);
+            } else {
+                response.error();
+                response.getListMessage().add("Error: La residencia no tiene una red WiFi configurada.");
+                return response;
+            }
+
+            if (!redValida) {
+                response.error();
+                response.getListMessage().add("Error: Conéctese a la red oficial de la residencia.");
+                return response;
+            }
+
             Optional<EntityAttendance> optionalAttendance = repositoryAttendance
                     .findTopByParentUserOrderByCreated_atDesc(entityUser);
 
@@ -188,6 +181,23 @@ public class BusinessAttendance {
                 }
                 EntityUser entityUser = optionalUser.get();
 
+                // RF-13/14: Validación de red por BSSID y SSID (opcional mientras offline esté
+                // en
+                // pausa)
+                if (record.getBssid() != null && !record.getBssid().isEmpty()) {
+                    String expectedBSSID = entityUser.getParentResidence().getWifiBssid();
+                    if (expectedBSSID == null || !expectedBSSID.equalsIgnoreCase(record.getBssid())) {
+                        rechazados++;
+                        continue;
+                    }
+                } else if (record.getSsid() != null && !record.getSsid().isEmpty()) {
+                    String expectedSSID = entityUser.getParentResidence().getWifiSsid();
+                    if (expectedSSID == null || !expectedSSID.equals(record.getSsid())) {
+                        rechazados++;
+                        continue;
+                    }
+                }
+
                 // 2. Ahora sí, re-verificar con Python usando la referencia cacheada
                 ResponseFaceVerification serverResult = pythonFaceRecognitionHelper
                         .verificarRostroBase64(
@@ -246,34 +256,6 @@ public class BusinessAttendance {
                 return true;
         }
         return false;
-    }
-
-    private String normalizeIpAddress(String ip) {
-        if (ip == null)
-            return null;
-
-        // Normalizar IPv6 loopback
-        if (ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1")) {
-            return "127.0.0.1";
-        }
-
-        // Normalizar localhost
-        if (ip.equals("localhost")) {
-            return "127.0.0.1";
-        }
-
-        return ip;
-    }
-
-    private boolean isSameNetwork(String ip1, String ip2) {
-        String normalizedIp1 = normalizeIpAddress(ip1);
-        String normalizedIp2 = normalizeIpAddress(ip2);
-
-        if (normalizedIp1 == null || normalizedIp2 == null)
-            return false;
-
-        // Comparación exacta después de normalizar
-        return normalizedIp1.equals(normalizedIp2);
     }
 
     public Map<String, Object> getByUser(String userId) {

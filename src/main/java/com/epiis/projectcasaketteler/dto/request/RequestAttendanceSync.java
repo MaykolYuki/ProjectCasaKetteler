@@ -13,4 +13,6 @@ public class RequestAttendanceSync {
     private Boolean isEntry; // true=entrada, false=salida
     private Double clientSimilarity;
     private String base64Image; // imagen para re-verificar con Python
+    private String ssid; // SSID de la red Wi-Fi
+    private String bssid; // BSSID de la red Wi-Fi
 }

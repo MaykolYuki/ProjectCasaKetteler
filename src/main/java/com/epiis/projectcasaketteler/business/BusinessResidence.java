@@ -37,6 +37,7 @@ public class BusinessResidence {
 		entityResidence.setCreated_at(new java.sql.Date(new Date().getTime()));
 		entityResidence.setUpdated_at(entityResidence.getCreated_at());
 		entityResidence.setWifiSsid(request.getWifiSsid());
+		entityResidence.setWifiBssid(request.getWifiBssid());
 
 		repositoryResidence.save(entityResidence);
 
@@ -101,6 +102,7 @@ public class BusinessResidence {
 			entityResidence.setIpAddress(InetAddress.getLocalHost().toString());
 			entityResidence.setUpdated_at(new java.sql.Date(new Date().getTime()));
 			entityResidence.setWifiSsid(request.getWifiSsid());
+			entityResidence.setWifiBssid(request.getWifiBssid());
 
 			repositoryResidence.save(entityResidence);
 
