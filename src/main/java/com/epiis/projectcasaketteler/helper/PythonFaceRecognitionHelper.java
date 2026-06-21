@@ -8,6 +8,7 @@ import java.io.InputStreamReader;
 import org.springframework.stereotype.Component;
 
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
+import com.epiis.projectcasaketteler.dto.response.ResponsePhotoFilter;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -15,29 +16,50 @@ import tools.jackson.databind.ObjectMapper;
 public class PythonFaceRecognitionHelper {
 
     private static final String PYTHON_PATH = "C:/Users/yerry/Documents/Ingenieria de Software/BackendCasaKetteler/ProjectCasaKetteler/python_scripts/venv_perfecto/Scripts/python.exe";
+
     private static final String SCRIPT_PATH = "python_scripts/ReconocimientoFacial.py";
 
-    public ResponseFaceVerification verificarRostro(String rutaImagen, String idUser) {
+    private static final String FILTER_SCRIPT_PATH = "python_scripts/FiltroCalidadFoto.py";
+
+    public ResponseFaceVerification verificarRostro(String rutaImagen, String idUser, String bestPhotoFileName) {
         try {
             java.io.File archivoCaptura = new java.io.File(rutaImagen);
-            java.io.File archivoDirectorioUsuario = new java.io.File("storage/Photo/" + idUser);
-
             String rutaAbsolutaCaptura = archivoCaptura.getAbsolutePath();
-            String rutaAbsolutaUsuario = archivoDirectorioUsuario.getAbsolutePath();
+
+            String directorioUsuario = "storage/Photo/" + idUser;
+
+            // Si ya hay una referencia cacheada, úsala directamente
+            String mejorFotoNombre;
+            if (bestPhotoFileName != null && !bestPhotoFileName.isEmpty()) {
+                mejorFotoNombre = bestPhotoFileName;
+            } else {
+                // Fallback: calcular si no hay caché (primera vez o caché perdida)
+                ResponsePhotoFilter filtro = seleccionarMejorFoto(directorioUsuario);
+                if (!filtro.isSuccess()) {
+                    ResponseFaceVerification error = new ResponseFaceVerification();
+                    error.setVerified(false);
+                    error.setError(filtro.getError());
+                    return error;
+                }
+                mejorFotoNombre = filtro.getBestImage();
+            }
+
+            java.io.File mejorFoto = new java.io.File(directorioUsuario + "/" + mejorFotoNombre);
+            String rutaAbsolutaMejorFoto = mejorFoto.getAbsolutePath();
 
             ProcessBuilder processBuilder = new ProcessBuilder(
                     PYTHON_PATH,
                     SCRIPT_PATH,
                     rutaAbsolutaCaptura,
-                    rutaAbsolutaUsuario);
+                    rutaAbsolutaMejorFoto);
 
             processBuilder.redirectErrorStream(true);
             Process process = processBuilder.start();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()));
 
             StringBuilder jsonOutput = new StringBuilder();
             String line;
-
             while ((line = reader.readLine()) != null) {
                 if (line.trim().startsWith("{") && line.trim().endsWith("}")) {
                     jsonOutput.append(line.trim());
@@ -61,7 +83,7 @@ public class PythonFaceRecognitionHelper {
         }
     }
 
-    public ResponseFaceVerification verificarRostroBase64(String base64Image, String idUser) {
+    public ResponseFaceVerification verificarRostroBase64(String base64Image, String idUser, String bestPhotoFileName) {
         File tempFile = null;
         try {
             byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Image);
@@ -76,7 +98,7 @@ public class PythonFaceRecognitionHelper {
                 fos.write(imageBytes);
             }
 
-            return verificarRostro(tempFile.getAbsolutePath(), idUser);
+            return verificarRostro(tempFile.getAbsolutePath(), idUser, bestPhotoFileName);
 
         } catch (Exception e) {
             ResponseFaceVerification error = new ResponseFaceVerification();
@@ -89,6 +111,47 @@ public class PythonFaceRecognitionHelper {
             }
         }
     }
+
+    public ResponsePhotoFilter seleccionarMejorFoto(String directorioUsuario) {
+        try {
+            java.io.File directorio = new java.io.File(directorioUsuario);
+            String rutaAbsoluta = directorio.getAbsolutePath();
+
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                    PYTHON_PATH,
+                    FILTER_SCRIPT_PATH,
+                    rutaAbsoluta);
+
+            processBuilder.redirectErrorStream(true);
+            Process process = processBuilder.start();
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()));
+
+            StringBuilder jsonOutput = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().startsWith("{") && line.trim().endsWith("}")) {
+                    jsonOutput.append(line.trim());
+                }
+            }
+
+            process.waitFor();
+
+            if (jsonOutput.length() == 0) {
+                throw new RuntimeException("FiltroCalidadFoto no devolvió JSON válido.");
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.readValue(jsonOutput.toString(), ResponsePhotoFilter.class);
+
+        } catch (Exception e) {
+            ResponsePhotoFilter error = new ResponsePhotoFilter();
+            error.setSuccess(false);
+            error.setError("Error en filtro de calidad: " + e.getMessage());
+            return error;
+        }
+    }
+
     /**
      * // -----------------------------------------------------------------
      * // MÉTODO DE DIAGNÓSTICO DE RUTAS NATIVAS - ÚTIL PARA DESARROLLO

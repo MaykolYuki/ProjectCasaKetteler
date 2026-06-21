@@ -59,18 +59,7 @@ public class BusinessAttendance {
             // le pasamos la ruta absoluta real que Windows sí entiende al 100%.
             request.getFile().transferTo(tempFile.getAbsoluteFile()); // <-- AGREGA .getAbsoluteFile()
 
-            ResponseFaceVerification responsetoPython = pythonFaceRecognitionHelper.verificarRostro(rutaImagen,
-                    request.getIdUser());
-
-            // RF-12: umbral de similitud ≥85%
-            if (!responsetoPython.isVerified() || responsetoPython.getSimilarity() < 85.0) {
-                responsetoPython.error();
-                responsetoPython.getListMessage().add(
-                        "Error: Rostro no reconocido. Similitud: " +
-                                String.format("%.1f", responsetoPython.getSimilarity()) + "% (mínimo 85%).");
-                return responsetoPython;
-            }
-
+            // Obtener usuario PRIMERO
             Optional<EntityUser> optionalUser = repositoryUser.findById(request.getIdUser());
             if (!optionalUser.isPresent()) {
                 response.error();
@@ -78,6 +67,21 @@ public class BusinessAttendance {
                 return response;
             }
             EntityUser entityUser = optionalUser.get();
+
+            // Ahora sí, llamar a Python con la referencia cacheada
+            ResponseFaceVerification responsetoPython = pythonFaceRecognitionHelper.verificarRostro(
+                    rutaImagen, request.getIdUser(), entityUser.getBestPhotoReference());
+
+            // RF-12: umbral de similitud ≥85% — única fuente de verdad
+            if (responsetoPython.getSimilarity() < 85.0) {
+                responsetoPython.setVerified(false);
+                responsetoPython.error();
+                responsetoPython.getListMessage().add(
+                        "Error: Rostro no reconocido. Similitud: " +
+                                String.format("%.1f", responsetoPython.getSimilarity()) + "% (mínimo 85%).");
+                return responsetoPython;
+            }
+            responsetoPython.setVerified(true);
 
             String localIpHost = InetAddress.getLocalHost().getHostAddress();
             String parentResidenceIp = entityUser.getParentResidence().getIpAddress();
@@ -92,19 +96,21 @@ public class BusinessAttendance {
             System.out.println("isSameNetwork (residencia): " + isSameNetwork(localIpHost, parentResidenceIp));
             System.out.println("isSameNetwork (usuario): " + isSameNetwork(requestIp, userLocalAddress));
             // -- FIN DEPURACIÓN --//
-
-            if (!isSameNetwork(localIpHost, parentResidenceIp)) {
-                response.error();
-                response.getListMessage().add("Error: La Dirección WIFI de la residencia es incorrecta.");
-                return response;
-            }
-
-            if (!isSameNetwork(requestIp, userLocalAddress)) {
-                response.error();
-                response.getListMessage().add("Error: Este celular no le pertenece o no está en la red correcta.");
-                return response;
-            }
-
+            /*
+             * if (!isSameNetwork(localIpHost, parentResidenceIp)) {
+             * response.error();
+             * response.getListMessage().
+             * add("Error: La Dirección WIFI de la residencia es incorrecta.");
+             * return response;
+             * }
+             * 
+             * if (!isSameNetwork(requestIp, userLocalAddress)) {
+             * response.error();
+             * response.getListMessage().
+             * add("Error: Este celular no le pertenece o no está en la red correcta.");
+             * return response;
+             * }
+             */
             Optional<EntityAttendance> optionalAttendance = repositoryAttendance
                     .findTopByParentUserOrderByCreated_atDesc(entityUser);
 
@@ -134,8 +140,9 @@ public class BusinessAttendance {
 
                     repositoryAttendance.save(lastAttendance);
 
+                    responsetoPython.setEntrada(false);
                     responsetoPython.success();
-                    responsetoPython.getListMessage().add("Salida registrada correctamente (Línea completada).");
+                    responsetoPython.getListMessage().add("Salida registrada correctamente.");
                     return responsetoPython;
                 }
             }
@@ -149,8 +156,9 @@ public class BusinessAttendance {
 
             repositoryAttendance.save(newAttendance);
 
+            responsetoPython.setEntrada(true);
             responsetoPython.success();
-            responsetoPython.getListMessage().add("Entrada registrada correctamente (Nueva línea).");
+            responsetoPython.getListMessage().add("Entrada registrada correctamente.");
             return responsetoPython;
 
         } catch (Exception e) {
@@ -172,17 +180,7 @@ public class BusinessAttendance {
 
         for (RequestAttendanceSync record : records) {
             try {
-                // 1. Re-verificar con Python
-                ResponseFaceVerification serverResult = pythonFaceRecognitionHelper
-                        .verificarRostroBase64(record.getBase64Image(), record.getIdUser());
-
-                // 2. Aplicar umbral del servidor (RF-12)
-                if (!serverResult.isVerified() || serverResult.getSimilarity() < 85.0) {
-                    rechazados++;
-                    continue;
-                }
-
-                // 3. Verificar duplicado (mismo usuario, misma hora ±1 min)
+                // 1. Buscar usuario PRIMERO
                 Optional<EntityUser> optionalUser = repositoryUser.findById(record.getIdUser());
                 if (!optionalUser.isPresent()) {
                     rechazados++;
@@ -190,12 +188,26 @@ public class BusinessAttendance {
                 }
                 EntityUser entityUser = optionalUser.get();
 
+                // 2. Ahora sí, re-verificar con Python usando la referencia cacheada
+                ResponseFaceVerification serverResult = pythonFaceRecognitionHelper
+                        .verificarRostroBase64(
+                                record.getBase64Image(),
+                                record.getIdUser(),
+                                entityUser.getBestPhotoReference());
+
+                // 3. Aplicar umbral
+                if (serverResult.getSimilarity() < 85.0) {
+                    rechazados++;
+                    continue;
+                }
+
+                // 4. Verificar duplicado
                 if (isDuplicateSync(entityUser, record.getRecordedAt())) {
                     rechazados++;
                     continue;
                 }
 
-                // 4. Guardar con metadatos de auditoría
+                // 5. Guardar con metadatos de auditoría
                 EntityAttendance attendance = new EntityAttendance();
                 attendance.setIdAtendance(UUID.randomUUID().toString());
                 attendance.setParentUser(entityUser);

@@ -75,6 +75,9 @@ public class EntityUser {
 	@Column(name = "temporalPassword")
 	private String temporalPassword;
 
+	@Column(name = "bestPhotoReference")
+	private String bestPhotoReference; // nombre del archivo de la mejor foto
+
 	@Column(name = "created_at")
 	private Date created_at;
 

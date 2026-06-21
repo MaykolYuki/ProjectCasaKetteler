@@ -6,6 +6,15 @@ public class ResponseFaceVerification extends ResponseGeneric {
 	private boolean verified;
 	private String error;
 	private double similarity; // AGREGAR
+	private Boolean entrada; // true = se registró entrada, false = se registró salida
+
+	public Boolean getEntrada() {
+		return entrada;
+	}
+
+	public void setEntrada(Boolean entrada) {
+		this.entrada = entrada;
+	}
 
 	public double getSimilarity() {
 		return similarity;
