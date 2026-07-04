@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
+import com.epiis.projectcasaketteler.dto.response.ResponseAttendancePage;
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
 import com.epiis.projectcasaketteler.entity.EntityUser;
@@ -280,5 +281,65 @@ public class BusinessAttendance {
         res.put("data", attendances);
 
         return res;
+    }
+
+    // RF-30/31: Residente consulta su propia asistencia con filtros y paginación
+    public Map<String, Object> getByFilters(String userId, String fechaInicio, String fechaFin,
+            Boolean estado, int page, int size) {
+        Map<String, Object> res = new HashMap<>();
+
+        Optional<EntityUser> optionalUser = repositoryUser.findById(userId);
+        if (!optionalUser.isPresent()) {
+            res.put("type", "error");
+            res.put("message", "Usuario no encontrado");
+            return res;
+        }
+
+        EntityUser user = optionalUser.get();
+        Date inicio = parseFecha(fechaInicio, false);
+        Date fin = parseFecha(fechaFin, true);
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+
+        org.springframework.data.domain.Page<EntityAttendance> resultado = repositoryAttendance.findByFilters(user,
+                inicio, fin, estado, pageable);
+
+        res.put("type", "success");
+        res.put("message", "Asistencias obtenidas correctamente");
+        res.put("data", new ResponseAttendancePage(resultado));
+        return res;
+    }
+
+    // RF-30/31: Admin consulta asistencia de cualquier residente con filtros
+    public Map<String, Object> getByFiltersAdmin(String idUser, String fechaInicio,
+            String fechaFin, Boolean estado, int page, int size) {
+        Map<String, Object> res = new HashMap<>();
+
+        Date inicio = parseFecha(fechaInicio, false);
+        Date fin = parseFecha(fechaFin, true);
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+
+        org.springframework.data.domain.Page<EntityAttendance> resultado = repositoryAttendance
+                .findByFiltersAdmin(inicio, fin, estado, idUser, pageable);
+
+        res.put("type", "success");
+        res.put("message", "Asistencias obtenidas correctamente");
+        res.put("data", new ResponseAttendancePage(resultado));
+        return res;
+    }
+
+    private Date parseFecha(String fecha, boolean finDelDia) {
+        if (fecha == null || fecha.isEmpty())
+            return null;
+        try {
+            java.time.LocalDate localDate = java.time.LocalDate.parse(fecha);
+            if (finDelDia) {
+                return java.sql.Date.valueOf(localDate.plusDays(1));
+            }
+            return java.sql.Date.valueOf(localDate);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

@@ -56,6 +56,12 @@ public class EntityAdmin {
 	@Column(name = "active")
 	private Boolean active = true;
 
+	@Column(name = "loginAttempts")
+	private Integer loginAttempts = 0;
+
+	@Column(name = "lockedUntil")
+	private Date lockedUntil;
+
 	@Column(name = "created_at")
 	private Date created_at;
 

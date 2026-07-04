@@ -1,5 +1,6 @@
 package com.epiis.projectcasaketteler.business;
 
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +70,14 @@ public class BusinessUser {
 			if (adminOptional.isPresent()) {
 				EntityAdmin admin = adminOptional.get();
 
+				// Verificar si está bloqueado
+				if (admin.getLockedUntil() != null && admin.getLockedUntil().after(new Date())) {
+					long minutosRestantes = (admin.getLockedUntil().getTime() - new Date().getTime()) / (1000 * 60);
+					response.setType("error");
+					response.getListMessage().add("Cuenta bloqueada. Intente en " + minutosRestantes + " minuto(s).");
+					return response;
+				}
+
 				if (admin.getActive() == null || !admin.getActive()) {
 					response.setType("error");
 					response.getListMessage().add("Usuario desactivado");
@@ -76,10 +85,30 @@ public class BusinessUser {
 				}
 
 				if (!passwordEncoder().matches(request.getPassword(), admin.getPassword())) {
+					int intentos = admin.getLoginAttempts() == null ? 0 : admin.getLoginAttempts();
+					intentos++;
+					admin.setLoginAttempts(intentos);
+
+					if (intentos >= 5) {
+						Date bloqueoHasta = new Date(new Date().getTime() + 15 * 60 * 1000);
+						admin.setLockedUntil(bloqueoHasta);
+						admin.setLoginAttempts(0);
+						repositoryAdmin.save(admin);
+						response.setType("error");
+						response.getListMessage().add("Cuenta bloqueada por 15 minutos tras 5 intentos fallidos.");
+						return response;
+					}
+
+					repositoryAdmin.save(admin);
 					response.setType("error");
-					response.getListMessage().add("Credenciales incorrectas");
+					response.getListMessage().add("Credenciales incorrectas. Intento " + intentos + " de 5.");
 					return response;
 				}
+
+				// Login exitoso — resetear intentos
+				admin.setLoginAttempts(0);
+				admin.setLockedUntil(null);
+				repositoryAdmin.save(admin);
 
 				String token = jwtHelper.generateToken(admin.getIdAdmin(), admin.getEmail(),
 						admin.getRole().toString());
@@ -90,9 +119,8 @@ public class BusinessUser {
 				response.setRole(admin.getRole().toString());
 				response.setFirstName(admin.getFirstName());
 				response.setSurName(admin.getSurName());
-				response.setFirstLogin(false); // Admins no tienen firstLogin
+				response.setFirstLogin(false);
 				response.getListMessage().add("Login exitoso");
-
 				return response;
 			}
 
@@ -102,47 +130,48 @@ public class BusinessUser {
 			if (userOptional.isPresent()) {
 				EntityUser user = userOptional.get();
 
-				System.out.println("=== USUARIO ENCONTRADO ===");
-				System.out.println("Email: " + user.getEmail());
-				System.out.println("Password en BD: " + user.getPassword());
-				System.out.println("Password recibida: " + request.getPassword());
+				// Verificar si está bloqueado
+				if (user.getLockedUntil() != null && user.getLockedUntil().after(new Date())) {
+					long minutosRestantes = (user.getLockedUntil().getTime() - new Date().getTime()) / (1000 * 60);
+					response.setType("error");
+					response.getListMessage().add("Cuenta bloqueada. Intente en " + minutosRestantes + " minuto(s).");
+					return response;
+				}
 
-				// VERIFICAR ACTIVO PRIMERO
-				System.out.println("Active: " + user.getActive());
 				if (user.getActive() == null || !user.getActive()) {
-					System.out.println("ERROR: Usuario inactivo");
 					response.setType("error");
 					response.getListMessage().add("Usuario desactivado");
 					return response;
 				}
 
-				// AHORA VERIFICAR CONTRASEÑA
-				boolean matches = passwordEncoder().matches(request.getPassword(), user.getPassword());
-				System.out.println("=== COMPARACIÓN DE CONTRASEÑA ===");
-				System.out.println("¿Coinciden? " + matches);
-
-				if (!matches) {
-					System.out.println("ERROR: Contraseña incorrecta");
-					response.setType("error");
-					response.getListMessage().add("Credenciales incorrectas");
-					return response;
-				}
-
-				System.out.println("LOGIN EXITOSO para residente");
-				// ----------------------
-				if (user.getActive() == null || !user.getActive()) {
-					response.setType("error");
-					response.getListMessage().add("Usuario desactivado, contacte al administrador");
-					return response;
-				}
-
 				if (!passwordEncoder().matches(request.getPassword(), user.getPassword())) {
+					int intentos = user.getLoginAttempts() == null ? 0 : user.getLoginAttempts();
+					intentos++;
+					user.setLoginAttempts(intentos);
+
+					if (intentos >= 5) {
+						Date bloqueoHasta = new Date(new Date().getTime() + 15 * 60 * 1000);
+						user.setLockedUntil(bloqueoHasta);
+						user.setLoginAttempts(0);
+						repositoryUser.save(user);
+						response.setType("error");
+						response.getListMessage().add("Cuenta bloqueada por 15 minutos tras 5 intentos fallidos.");
+						return response;
+					}
+
+					repositoryUser.save(user);
 					response.setType("error");
-					response.getListMessage().add("Credenciales incorrectas");
+					response.getListMessage().add("Credenciales incorrectas. Intento " + intentos + " de 5.");
 					return response;
 				}
 
-				String token = jwtHelper.generateToken(user.getIdUser(), user.getEmail(), user.getRole().toString());
+				// Login exitoso — resetear intentos
+				user.setLoginAttempts(0);
+				user.setLockedUntil(null);
+				repositoryUser.save(user);
+
+				String token = jwtHelper.generateToken(user.getIdUser(), user.getEmail(),
+						user.getRole().toString());
 
 				response.setType("success");
 				response.setToken(token);
@@ -152,10 +181,6 @@ public class BusinessUser {
 				response.setSurName(user.getSurName());
 				response.setFirstLogin(user.getFirstLogin());
 				response.getListMessage().add("Login exitoso");
-
-				System.out.println("Contraseña en BD: " + user.getPassword());
-				System.out.println("Match: " + passwordEncoder().matches(request.getPassword(), user.getPassword()));
-
 				return response;
 			}
 

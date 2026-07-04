@@ -76,7 +76,13 @@ public class EntityUser {
 	private String temporalPassword;
 
 	@Column(name = "bestPhotoReference")
-	private String bestPhotoReference; // nombre del archivo de la mejor foto
+	private String bestPhotoReference;
+
+	@Column(name = "loginAttempts")
+	private Integer loginAttempts = 0;
+
+	@Column(name = "lockedUntil")
+	private Date lockedUntil;
 
 	@Column(name = "created_at")
 	private Date created_at;

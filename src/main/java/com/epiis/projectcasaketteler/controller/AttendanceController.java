@@ -13,9 +13,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.epiis.projectcasaketteler.business.BusinessAttendance;
+import com.epiis.projectcasaketteler.business.BusinessAttendanceExport;
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
@@ -29,6 +31,9 @@ public class AttendanceController {
 
     @Autowired
     private JwtHelper jwtHelper;
+
+    @Autowired
+    BusinessAttendanceExport businessAttendanceExport;
 
     @PostMapping(path = "register", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ResponseFaceVerification> registerAttendance(
@@ -58,4 +63,58 @@ public class AttendanceController {
         String userId = jwtHelper.extractUserId(token.substring(7));
         return ResponseEntity.ok(businessAttendance.syncOfflineRecords(userId, records));
     }
+
+    // Residente: su propia asistencia con filtros
+    @GetMapping(path = "myattendance/filter")
+    public ResponseEntity<Map<String, Object>> getByFilters(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(required = false) String fechaInicio,
+            @RequestParam(required = false) String fechaFin,
+            @RequestParam(required = false) Boolean estado,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        String userId = jwtHelper.extractUserId(token.substring(7));
+        return ResponseEntity.ok(businessAttendance.getByFilters(
+                userId, fechaInicio, fechaFin, estado, page, size));
+    }
+
+    // Admin: asistencia de cualquier residente con filtros
+    @GetMapping(path = "attendance/filter")
+    public ResponseEntity<Map<String, Object>> getByFiltersAdmin(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(required = false) String idUser,
+            @RequestParam(required = false) String fechaInicio,
+            @RequestParam(required = false) String fechaFin,
+            @RequestParam(required = false) Boolean estado,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(businessAttendance.getByFiltersAdmin(
+                idUser, fechaInicio, fechaFin, estado, page, size));
+    }
+
+    @GetMapping(path = "attendance/export")
+    public ResponseEntity<byte[]> exportar(
+            @RequestParam String format,
+            @RequestParam(required = false) String idUser,
+            @RequestParam(required = false) String fechaInicio,
+            @RequestParam(required = false) String fechaFin,
+            @RequestParam(required = false) Boolean estado) throws Exception {
+
+        if ("excel".equalsIgnoreCase(format)) {
+            byte[] data = businessAttendanceExport.exportarExcel(idUser, fechaInicio, fechaFin, estado);
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"asistencias.xlsx\"")
+                    .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .body(data);
+        } else if ("pdf".equalsIgnoreCase(format)) {
+            byte[] data = businessAttendanceExport.exportarPDF(idUser, fechaInicio, fechaFin, estado);
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"asistencias.pdf\"")
+                    .header("Content-Type", "application/pdf")
+                    .body(data);
+        }
+
+        return ResponseEntity.badRequest().build();
+    }
+
 }

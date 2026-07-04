@@ -63,7 +63,8 @@ public class SecurityConfig {
 								"/casaketteler/resignation/**", // gestión renuncia admin
 								"/casaketteler/registerdocumentgeneral",
 								"/casaketteler/registerdocumententer",
-								"/casaketteler/resignation/**")
+								"/casaketteler/attendance/filter",
+								"/casaketteler/attendance/export")
 						.hasAnyAuthority("SUPER_ADMIN", "ADMIN")
 						// ============================================
 						// RESTO requieren autenticación (cualquier rol)
