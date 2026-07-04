@@ -26,13 +26,13 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 public class BusinessAttendance {
 
     @Autowired
-    RepositoryAttendance repositoryAttendance;
+    private RepositoryAttendance repositoryAttendance;
 
     @Autowired
-    RepositoryUser repositoryUser;
+    private RepositoryUser repositoryUser;
 
     @Autowired
-    PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
+    private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
 
     public ResponseFaceVerification insert(RequestAttendanceInsert request) {
         File tempFile = null;
@@ -327,6 +327,38 @@ public class BusinessAttendance {
         res.put("type", "success");
         res.put("message", "Asistencias obtenidas correctamente");
         res.put("data", new ResponseAttendancePage(resultado));
+        return res;
+    }
+
+    public Map<String, Object> getResumenKPI(String idResidence) {
+        Map<String, Object> res = new HashMap<>();
+
+        // Total de residentes activos por residencia
+        long totalResidentes;
+        if (idResidence == null || idResidence.isEmpty()) {
+            totalResidentes = repositoryUser.findAll().stream()
+                    .filter(u -> Boolean.TRUE.equals(u.getActive()))
+                    .count();
+        } else {
+            totalResidentes = repositoryUser.countActivosByResidencia(idResidence);
+        }
+
+        // Presentes hoy — tienen una entrada abierta (status=true) creada hoy
+        java.time.LocalDate hoy = java.time.LocalDate.now();
+        Date inicioDia = java.sql.Date.valueOf(hoy);
+        Date finDia = java.sql.Date.valueOf(hoy.plusDays(1));
+
+        long presentes = repositoryAttendance.countPresentesHoy(
+                inicioDia, finDia,
+                (idResidence == null || idResidence.isEmpty()) ? null : idResidence);
+        long ausentes = totalResidentes - presentes;
+
+        res.put("type", "success");
+        res.put("totalResidentes", totalResidentes);
+        res.put("presentes", presentes);
+        res.put("ausentes", ausentes < 0 ? 0 : ausentes);
+        res.put("fecha", hoy.toString());
+
         return res;
     }
 

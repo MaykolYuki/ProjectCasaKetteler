@@ -19,7 +19,7 @@ import com.epiis.projectcasaketteler.repository.RepositoryResidence;
 public class NetworkController {
 
     @Autowired
-    RepositoryResidence repositoryResidence;
+    private RepositoryResidence repositoryResidence;
 
     // Este endpoint devuelve la configuración de red esperada
     // El frontend debe comparar con el SSID real del dispositivo

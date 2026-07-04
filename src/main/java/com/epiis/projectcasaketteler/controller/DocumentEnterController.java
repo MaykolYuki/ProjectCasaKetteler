@@ -16,12 +16,13 @@ import com.epiis.projectcasaketteler.dto.response.ResponseDocumentEnterInsert;
 @RequestMapping(path = "casaketteler")
 public class DocumentEnterController {
 	@Autowired
-	BusinessDocumentEnter businessDocumentEnter;
-	
+	private BusinessDocumentEnter businessDocumentEnter;
+
 	@PostMapping(path = "registerdocumententer", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-	public ResponseEntity<ResponseDocumentEnterInsert> insert(@ModelAttribute RequestDocumentEnterInsert request) throws Exception{
+	public ResponseEntity<ResponseDocumentEnterInsert> insert(@ModelAttribute RequestDocumentEnterInsert request)
+			throws Exception {
 		ResponseDocumentEnterInsert response = businessDocumentEnter.insert(request);
-		
+
 		return ResponseEntity.ok(response);
 	}
 }

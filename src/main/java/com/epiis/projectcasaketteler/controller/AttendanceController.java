@@ -34,7 +34,7 @@ public class AttendanceController {
     private JwtHelper jwtHelper;
 
     @Autowired
-    BusinessAttendanceExport businessAttendanceExport;
+    private BusinessAttendanceExport businessAttendanceExport;
 
     @PostMapping(path = "register", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ResponseFaceVerification> registerAttendance(
@@ -117,6 +117,12 @@ public class AttendanceController {
         }
 
         return ResponseEntity.badRequest().build();
+    }
+
+    @GetMapping(path = "attendance/kpi")
+    public ResponseEntity<Map<String, Object>> getResumenKPI(
+            @RequestParam(required = false) String idResidence) {
+        return ResponseEntity.ok(businessAttendance.getResumenKPI(idResidence));
     }
 
 }

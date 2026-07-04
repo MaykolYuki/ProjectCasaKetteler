@@ -64,7 +64,8 @@ public class SecurityConfig {
 								"/casaketteler/registerdocumentgeneral",
 								"/casaketteler/registerdocumententer",
 								"/casaketteler/attendance/filter",
-								"/casaketteler/attendance/export")
+								"/casaketteler/attendance/export",
+								"/casaketteler/attendance/kpi")
 						.hasAnyAuthority("SUPER_ADMIN", "ADMIN")
 						// ============================================
 						// RESTO requieren autenticación (cualquier rol)

@@ -46,6 +46,15 @@ public interface RepositoryAttendance extends JpaRepository<EntityAttendance, St
 			@Param("idUser") String idUser,
 			Pageable pageable);
 
+	@Query("SELECT COUNT(DISTINCT a.parentUser.idUser) FROM EntityAttendance a " +
+			"WHERE a.status = true " +
+			"AND a.created_at >= :inicioDia AND a.created_at < :finDia " +
+			"AND (:idResidence IS NULL OR a.parentUser.parentResidence.idResidence = :idResidence)")
+	long countPresentesHoy(
+			@Param("inicioDia") Date inicioDia,
+			@Param("finDia") Date finDia,
+			@Param("idResidence") String idResidence);
+
 	default Optional<EntityAttendance> findLastAttendanceByUser(EntityUser user) {
 		return findTopByParentUserOrderByCreated_atDesc(user);
 	}

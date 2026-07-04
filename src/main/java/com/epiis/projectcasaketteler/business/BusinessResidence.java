@@ -24,7 +24,7 @@ import com.epiis.projectcasaketteler.repository.RepositoryResidence;
 @Service
 public class BusinessResidence {
 	@Autowired
-	RepositoryResidence repositoryResidence;
+	private RepositoryResidence repositoryResidence;
 
 	public ResponseResidenceInsert insert(RequestResidenceInsert request) throws Exception {
 		ResponseResidenceInsert response = new ResponseResidenceInsert();

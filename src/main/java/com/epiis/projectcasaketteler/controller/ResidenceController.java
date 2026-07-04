@@ -25,38 +25,40 @@ import com.epiis.projectcasaketteler.dto.response.ResponseResidenceUpdate;
 @RequestMapping(path = "casaketteler")
 public class ResidenceController {
 	@Autowired
-	BusinessResidence businessResidence;
-	
+	private BusinessResidence businessResidence;
+
 	@PostMapping(path = "registerresidence", consumes = MediaType.APPLICATION_JSON_VALUE)
-	public ResponseEntity<ResponseResidenceInsert> insert(@RequestBody RequestResidenceInsert request) throws Exception{
+	public ResponseEntity<ResponseResidenceInsert> insert(@RequestBody RequestResidenceInsert request)
+			throws Exception {
 		ResponseResidenceInsert response = businessResidence.insert(request);
-		
+
 		return ResponseEntity.ok(response);
 	}
-	
+
 	@GetMapping(path = "indexresidence")
-	public ResponseEntity<Map<String, Object>> getAll(){
-		
+	public ResponseEntity<Map<String, Object>> getAll() {
+
 		return ResponseEntity.ok(businessResidence.getAll());
 	}
-	
+
 	@GetMapping(path = "showresidence/{idResidence}")
-	public ResponseEntity<Map<String, Object>> getById(@PathVariable String idResidence){
-		
+	public ResponseEntity<Map<String, Object>> getById(@PathVariable String idResidence) {
+
 		return ResponseEntity.ok(businessResidence.getById(idResidence));
 	}
-	
+
 	@DeleteMapping(path = "deleteresidence/{idResidence}")
-	public ResponseEntity<ResponseResidenceDeleteById> deleteById(@PathVariable String idResidence){
+	public ResponseEntity<ResponseResidenceDeleteById> deleteById(@PathVariable String idResidence) {
 		ResponseResidenceDeleteById response = businessResidence.deleteById(idResidence);
-		
+
 		return ResponseEntity.ok(response);
 	}
-	
+
 	@PutMapping(path = "updateresidence/{idResidence}", consumes = MediaType.APPLICATION_JSON_VALUE)
-	public ResponseEntity<ResponseResidenceUpdate> update(@PathVariable String idResidence, @RequestBody RequestResidenceUpdate request) throws Exception{
+	public ResponseEntity<ResponseResidenceUpdate> update(@PathVariable String idResidence,
+			@RequestBody RequestResidenceUpdate request) throws Exception {
 		ResponseResidenceUpdate response = businessResidence.update(idResidence, request);
-		
+
 		return ResponseEntity.ok(response);
 	}
 }

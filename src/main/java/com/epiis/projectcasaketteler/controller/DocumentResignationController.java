@@ -23,10 +23,10 @@ import com.epiis.projectcasaketteler.helper.JwtHelper;
 @RequestMapping(path = "casaketteler")
 public class DocumentResignationController {
 	@Autowired
-	BusinessDocumentResignation businessDocumentResignation;
+	private BusinessDocumentResignation businessDocumentResignation;
 
 	@Autowired
-	JwtHelper jwtHelper;
+	private JwtHelper jwtHelper;
 
 	@PostMapping(path = "registerdocumentresignation")
 	public ResponseEntity<ResponseDocumentResignationInsert> insert(

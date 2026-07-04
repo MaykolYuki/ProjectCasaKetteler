@@ -28,13 +28,13 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 @Service
 public class BusinessPhoto {
 	@Autowired
-	RepositoryPhoto repositoryPhoto;
+	private RepositoryPhoto repositoryPhoto;
 
 	@Autowired
-	RepositoryUser repositoryUser;
+	private RepositoryUser repositoryUser;
 
 	@Autowired
-	PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
+	private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
 
 	private String storageDir = "storage";
 

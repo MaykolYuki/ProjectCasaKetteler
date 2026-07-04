@@ -34,10 +34,10 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 public class BusinessAttendanceExport {
 
     @Autowired
-    RepositoryAttendance repositoryAttendance;
+    private RepositoryAttendance repositoryAttendance;
 
     @Autowired
-    RepositoryUser repositoryUser;
+    private RepositoryUser repositoryUser;
 
     private List<EntityAttendance> obtenerDatos(String idUser, String fechaInicio,
             String fechaFin, Boolean estado) {

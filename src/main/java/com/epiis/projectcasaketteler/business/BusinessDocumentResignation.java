@@ -26,13 +26,13 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 @Service
 public class BusinessDocumentResignation {
 	@Autowired
-	RepositoryDocumentResignation repositoryDocumentResignation;
+	private RepositoryDocumentResignation repositoryDocumentResignation;
 
 	@Autowired
-	RepositoryUser repositoryUser;
+	private RepositoryUser repositoryUser;
 
 	@Autowired
-	DocumentValidationHelper documentValidationHelper;
+	private DocumentValidationHelper documentValidationHelper;
 
 	private String storageDir = "storage";
 

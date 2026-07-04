@@ -27,13 +27,13 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 public class BusinessDocumentGeneral {
 
 	@Autowired
-	RepositoryDocumentGeneral repositoryDocumentGeneral;
+	private RepositoryDocumentGeneral repositoryDocumentGeneral;
 
 	@Autowired
-	RepositoryUser repositoryUser;
+	private RepositoryUser repositoryUser;
 
 	@Autowired
-	DocumentValidationHelper documentValidationHelper;
+	private DocumentValidationHelper documentValidationHelper;
 
 	private String storageDir = "storage";
 
@@ -88,7 +88,8 @@ public class BusinessDocumentGeneral {
 			return response;
 		}
 
-		Path storagePath = Paths.get(storageDir + "/DocumentGeneral/" + entityUser.getFirstName() + "/" + request.getType());
+		Path storagePath = Paths
+				.get(storageDir + "/DocumentGeneral/" + entityUser.getFirstName() + "/" + request.getType());
 
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
@@ -113,7 +114,7 @@ public class BusinessDocumentGeneral {
 		entityDocumentGeneral.setPeriod(
 				"PAGO".equalsIgnoreCase(request.getType()) ? getCurrentMonthPeriod()
 						: "NOTAS".equalsIgnoreCase(request.getType()) ? getCurrentSemesterPeriod() : null);
-		
+
 		entityDocumentGeneral.setNameDocumentGeneral(filePhysicalName);
 		entityDocumentGeneral.setExtensionDocumentGeneral(extension);
 		entityDocumentGeneral.setCreated_at(new java.sql.Date(new Date().getTime()));

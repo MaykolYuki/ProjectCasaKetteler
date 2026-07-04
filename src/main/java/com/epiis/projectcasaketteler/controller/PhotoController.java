@@ -16,12 +16,12 @@ import com.epiis.projectcasaketteler.dto.response.ResponsePhotoInsert;
 @RequestMapping(path = "casaketteler")
 public class PhotoController {
 	@Autowired
-	BusinessPhoto businessPhoto;
-	
+	private BusinessPhoto businessPhoto;
+
 	@PostMapping(path = "registerphoto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-	public ResponseEntity<ResponsePhotoInsert> insert(@ModelAttribute RequestPhotoInsert request) throws Exception{
+	public ResponseEntity<ResponsePhotoInsert> insert(@ModelAttribute RequestPhotoInsert request) throws Exception {
 		ResponsePhotoInsert response = businessPhoto.insert(request);
-		
+
 		return ResponseEntity.ok(response);
 	}
 }

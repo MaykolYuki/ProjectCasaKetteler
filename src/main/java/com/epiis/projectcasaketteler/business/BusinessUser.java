@@ -38,16 +38,16 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 @Service
 public class BusinessUser {
 	@Autowired
-	RepositoryUser repositoryUser;
+	private RepositoryUser repositoryUser;
 
 	@Autowired
-	RepositoryAdmin repositoryAdmin;
+	private RepositoryAdmin repositoryAdmin;
 
 	@Autowired
-	PasswordEncoderHelper passwordEncoderHelper;
+	private PasswordEncoderHelper passwordEncoderHelper;
 
 	@Autowired
-	ObtainIpAddressHelper obtainIpAddressHelper;
+	private ObtainIpAddressHelper obtainIpAddressHelper;
 
 	@Autowired
 	private JwtHelper jwtHelper;

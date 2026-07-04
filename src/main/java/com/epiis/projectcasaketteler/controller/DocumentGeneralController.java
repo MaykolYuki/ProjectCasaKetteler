@@ -24,10 +24,10 @@ import com.epiis.projectcasaketteler.helper.JwtHelper;
 @RequestMapping(path = "casaketteler")
 public class DocumentGeneralController {
 	@Autowired
-	BusinessDocumentGeneral businessDocumentGeneral;
+	private BusinessDocumentGeneral businessDocumentGeneral;
 
 	@Autowired
-	JwtHelper jwtHelper;
+	private JwtHelper jwtHelper;
 
 	@PostMapping(path = "registerdocumentgeneral", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public ResponseEntity<ResponseDocumentGeneralInsert> insert(@ModelAttribute RequestDocumentGeneralInsert request)

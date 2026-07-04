@@ -34,10 +34,10 @@ import com.epiis.projectcasaketteler.helper.JwtHelper;
 @RequestMapping(path = "casaketteler")
 public class UserController {
 	@Autowired
-	BusinessUser businessUser;
+	private BusinessUser businessUser;
 
 	@Autowired
-	JwtHelper jwtHelper; // AGREGAR ESTO
+	private JwtHelper jwtHelper; // AGREGAR ESTO
 
 	@PostMapping(path = "registeruser", consumes = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<ResponseUserInsert> insert(@RequestBody RequestUserInsert request) {

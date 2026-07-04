@@ -24,13 +24,13 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 public class BusinessDocumentEnter {
 
 	@Autowired
-	RepositoryDocumentEnter repositoryDocumentEnter;
+	private RepositoryDocumentEnter repositoryDocumentEnter;
 
 	@Autowired
-	RepositoryUser repositoryUser;
+	private RepositoryUser repositoryUser;
 
 	@Autowired
-	DocumentValidationHelper documentValidationHelper;
+	private DocumentValidationHelper documentValidationHelper;
 
 	private String storageDir = "storage";
 
@@ -77,9 +77,9 @@ public class BusinessDocumentEnter {
 		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
 
 		EntityDocumentEnter entityDocumentEnter = new EntityDocumentEnter();
-		entityDocumentEnter.setIdDocumentEnter(fileNameUUID); 
+		entityDocumentEnter.setIdDocumentEnter(fileNameUUID);
 		entityDocumentEnter.setParentUser(entityUser);
-		entityDocumentEnter.setNameDocumentEnter(filePhysicalName); 
+		entityDocumentEnter.setNameDocumentEnter(filePhysicalName);
 		entityDocumentEnter.setExtensionDocumentEnter(extension);
 		entityDocumentEnter.setCreated_at(new java.sql.Date(new Date().getTime()));
 
