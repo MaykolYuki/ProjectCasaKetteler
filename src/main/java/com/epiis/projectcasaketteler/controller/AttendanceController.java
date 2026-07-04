@@ -21,6 +21,7 @@ import com.epiis.projectcasaketteler.business.BusinessAttendanceExport;
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
+import com.epiis.projectcasaketteler.dto.response.ResponseSyncResult;
 import com.epiis.projectcasaketteler.helper.JwtHelper;
 
 @RestController
@@ -57,11 +58,12 @@ public class AttendanceController {
     }
 
     @PostMapping(path = "attendance/sync", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> sync(
+    public ResponseEntity<ResponseSyncResult> sync(
             @RequestHeader("Authorization") String token,
             @RequestBody List<RequestAttendanceSync> records) {
         String userId = jwtHelper.extractUserId(token.substring(7));
-        return ResponseEntity.ok(businessAttendance.syncOfflineRecords(userId, records));
+        ResponseSyncResult result = businessAttendance.syncOfflineRecords(userId, records);
+        return ResponseEntity.ok(result);
     }
 
     // Residente: su propia asistencia con filtros

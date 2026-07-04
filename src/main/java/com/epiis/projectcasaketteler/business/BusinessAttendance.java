@@ -15,6 +15,7 @@ import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
 import com.epiis.projectcasaketteler.dto.response.ResponseAttendancePage;
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
+import com.epiis.projectcasaketteler.dto.response.ResponseSyncResult;
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
 import com.epiis.projectcasaketteler.entity.EntityUser;
 import com.epiis.projectcasaketteler.helper.PythonFaceRecognitionHelper;
@@ -167,58 +168,60 @@ public class BusinessAttendance {
         }
     }
 
-    public Map<String, Object> syncOfflineRecords(String userId, List<RequestAttendanceSync> records) {
-        Map<String, Object> res = new HashMap<>();
-        int procesados = 0;
-        int rechazados = 0;
+    public ResponseSyncResult syncOfflineRecords(String userId, List<RequestAttendanceSync> records) {
+        ResponseSyncResult result = new ResponseSyncResult();
+        result.setType("success");
 
         for (RequestAttendanceSync record : records) {
+            String idUser = record.getIdUser();
+            String recordedAtStr = record.getRecordedAt() != null ? record.getRecordedAt().toString() : "desconocido";
+
             try {
-                // 1. Buscar usuario PRIMERO
-                Optional<EntityUser> optionalUser = repositoryUser.findById(record.getIdUser());
+                // 1. Buscar usuario
+                Optional<EntityUser> optionalUser = repositoryUser.findById(idUser);
                 if (!optionalUser.isPresent()) {
-                    rechazados++;
+                    result.agregarRechazado(idUser, recordedAtStr, "Usuario no encontrado");
                     continue;
                 }
                 EntityUser entityUser = optionalUser.get();
 
-                // RF-13/14: Validación de red por BSSID y SSID (opcional mientras offline esté
-                // en
-                // pausa)
+                // 2. Validar red por SSID/BSSID (opcional para offline)
                 if (record.getBssid() != null && !record.getBssid().isEmpty()) {
                     String expectedBSSID = entityUser.getParentResidence().getWifiBssid();
                     if (expectedBSSID == null || !expectedBSSID.equalsIgnoreCase(record.getBssid())) {
-                        rechazados++;
+                        result.agregarRechazado(idUser, recordedAtStr, "BSSID no corresponde a la red oficial");
                         continue;
                     }
                 } else if (record.getSsid() != null && !record.getSsid().isEmpty()) {
                     String expectedSSID = entityUser.getParentResidence().getWifiSsid();
                     if (expectedSSID == null || !expectedSSID.equals(record.getSsid())) {
-                        rechazados++;
+                        result.agregarRechazado(idUser, recordedAtStr, "SSID no corresponde a la red oficial");
                         continue;
                     }
                 }
 
-                // 2. Ahora sí, re-verificar con Python usando la referencia cacheada
+                // 3. Re-verificar con Python
                 ResponseFaceVerification serverResult = pythonFaceRecognitionHelper
                         .verificarRostroBase64(
                                 record.getBase64Image(),
-                                record.getIdUser(),
+                                idUser,
                                 entityUser.getBestPhotoReference());
 
-                // 3. Aplicar umbral
                 if (serverResult.getSimilarity() < 85.0) {
-                    rechazados++;
+                    result.agregarRechazado(idUser, recordedAtStr,
+                            "Similitud insuficiente: " +
+                                    String.format("%.1f", serverResult.getSimilarity()) + "% (mínimo 85%)");
                     continue;
                 }
 
                 // 4. Verificar duplicado
                 if (isDuplicateSync(entityUser, record.getRecordedAt())) {
-                    rechazados++;
+                    result.agregarRechazado(idUser, recordedAtStr,
+                            "Registro duplicado — ya existe uno en ±1 minuto");
                     continue;
                 }
 
-                // 5. Guardar con metadatos de auditoría
+                // 5. Guardar
                 EntityAttendance attendance = new EntityAttendance();
                 attendance.setIdAtendance(UUID.randomUUID().toString());
                 attendance.setParentUser(entityUser);
@@ -231,17 +234,15 @@ public class BusinessAttendance {
                 attendance.setCreated_at(new Date());
 
                 repositoryAttendance.save(attendance);
-                procesados++;
+                result.agregarProcesado(idUser, recordedAtStr);
 
             } catch (Exception e) {
-                rechazados++;
+                result.agregarRechazado(idUser, recordedAtStr,
+                        "Error inesperado: " + e.getMessage());
             }
         }
 
-        res.put("type", "success");
-        res.put("procesados", procesados);
-        res.put("rechazados", rechazados);
-        return res;
+        return result;
     }
 
     private boolean isDuplicateSync(EntityUser user, Date recordedAt) {
