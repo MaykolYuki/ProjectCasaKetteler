@@ -7,4 +7,5 @@ import lombok.Setter;
 @Getter
 public class RequestResidenceInsert {
 	private String name;
+	private String wifiSsid;
 }

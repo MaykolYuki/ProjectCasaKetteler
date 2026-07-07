@@ -1,146 +1,101 @@
-from deepface import DeepFace
+# -----------------------------------------------------------------
+# SILENCIAR ADVERTENCIAS DE TENSORFLOW (DEBE SER LO PRIMERO)
+# -----------------------------------------------------------------
 import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+# -----------------------------------------------------------------
+
+import cv2
+from deepface import DeepFace
 import json
 import sys
 
+def seleccionar_mejor_foto(directorio_fotos):
+    """
+    Analiza todas las fotos de un directorio y devuelve el nombre de la que 
+    tiene el rostro más nítido y real.
+    """
+    if not os.path.exists(directorio_fotos):
+        return {"success": False, "error": "El directorio de fotos no existe"}
 
-def verificar_usuario(ruta_imagen_capturada, directorio_usuario):
-    try:
+    archivos = [
+        f for f in os.listdir(directorio_fotos) 
+        if f.lower().endswith((".jpg", ".jpeg", ".png"))
+    ]
+    
+    if len(archivos) == 0:
+        return {"success": False, "error": "No hay imágenes para evaluar"}
 
-        analisis = DeepFace.extract_faces(
-            img_path=ruta_imagen_capturada,
-            anti_spoofing=True,
-            enforce_detection=True
-        )
+    mejor_archivo = None
+    mejor_puntaje_nitidez = -1.0
 
-        if len(analisis) == 0:
-            return {
-                "success": False,
-                "verified": False,
-                "error": "No se detectó ningún rostro"
-            }
-
-        es_real = analisis[0]["is_real"]
-
-        if not es_real:
-            return {
-                "success": True,
-                "verified": False,
-                "error": "Spoofing detectado"
-            }
-
-    except Exception as e:
-        return {
-            "success": False,
-            "verified": False,
-            "error": f"Error en validación facial: {str(e)}"
-        }
-
-    # -----------------------------
-    # FASE 2: VERIFICACIÓN
-    # -----------------------------
-    try:
-
-        if not os.path.exists(directorio_usuario):
-            return {
-                "success": False,
-                "verified": False,
-                "error": "Directorio del usuario no existe"
-            }
-
-        archivos = os.listdir(directorio_usuario)
-
-        imagenes = [
-            archivo for archivo in archivos
-            if archivo.lower().endswith((".jpg", ".jpeg", ".png"))
-        ]
-
-        if len(imagenes) == 0:
-            return {
-                "success": False,
-                "verified": False,
-                "error": "El usuario no tiene imágenes registradas"
-            }
-
-        # Recorremos fotos del usuario
-        for archivo in imagenes:
-
-            ruta_referencia = os.path.join(
-                directorio_usuario,
-                archivo
+    for archivo in archivos:
+        ruta_imagen = os.path.join(directorio_fotos, archivo)
+        try:
+            # 1. Validar que haya un rostro y que sea real (Anti-spoofing)
+            analisis = DeepFace.extract_faces(
+                img_path=ruta_imagen,
+                anti_spoofing=True,
+                enforce_detection=True
             )
+            
+            # Si la lista está vacía o el rostro detectado es falso, saltamos esta foto
+            if len(analisis) == 0 or not analisis[0].get("is_real", True):
+                continue 
 
-            try:
+            # 2. Medir la nitidez usando OpenCV
+            # Convertimos la imagen a escala de grises y aplicamos la Varianza del Laplaciano
+            img = cv2.imread(ruta_imagen)
+            gris = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            nitidez = cv2.Laplacian(gris, cv2.CV_64F).var()
 
-                resultado = DeepFace.verify(
-                    img1_path=ruta_imagen_capturada,
-                    img2_path=ruta_referencia,
-                    model_name="ArcFace",
-                    enforce_detection=False
-                )
+            # Si esta foto es más nítida que la anterior ganadora, la reemplazamos
+            if nitidez > mejor_puntaje_nitidez:
+                mejor_puntaje_nitidez = nitidez
+                mejor_archivo = archivo
 
-                # Coincidencia encontrada
-                if resultado["verified"]:
-                    return {
-                        "success": True,
-                        "verified": True
-                    }
+        except Exception:
+            # DeepFace lanza una excepción si definitivamente no detecta ninguna cara
+            # Simplemente ignoramos este archivo y pasamos al siguiente
+            continue
 
-            except Exception:
-                continue
-
-        # Ninguna coincidencia
-        return {
-            "success": True,
-            "verified": False
-        }
-
-    except Exception as e:
+    # Si terminamos el ciclo y no hay un mejor archivo, ninguna foto servía
+    if mejor_archivo is None:
         return {
             "success": False,
-            "verified": False,
-            "error": str(e)
+            "error": "Ninguna de las fotos contiene un rostro humano válido o real"
         }
 
+    # Retornamos el ganador
+    return {
+        "success": True,
+        "best_image": mejor_archivo,
+        "sharpness_score": round(mejor_puntaje_nitidez, 2)
+    }
 
 # -----------------------------------
 # PUNTO DE ENTRADA
 # -----------------------------------
 if __name__ == "__main__":
-
     try:
-
-        if len(sys.argv) < 3:
-
+        # Esperamos que Java nos envíe la ruta de la carpeta donde están las fotos a evaluar
+        if len(sys.argv) < 2:
             print(json.dumps({
-                "success": False,
-                "verified": False,
-                "error": (
-                    "Uso correcto: "
-                    "python ReconocimientoFacial.py "
-                    "<imagen_capturada> "
-                    "<directorio_usuario>"
-                )
+                "success": False, 
+                "error": "Uso: python FiltroCalidadFoto.py <directorio_con_fotos>"
             }))
-
             sys.exit(1)
 
-        ruta_imagen = sys.argv[1]
-        directorio_usuario = sys.argv[2]
-
-        resultado = verificar_usuario(
-            ruta_imagen,
-            directorio_usuario
-        )
-
+        directorio_evaluacion = sys.argv[1]
+        resultado = seleccionar_mejor_foto(directorio_evaluacion)
+        
+        # Imprimir en formato JSON para que Java lo lea fácilmente
         print(json.dumps(resultado))
 
     except Exception as e:
-
         print(json.dumps({
-            "success": False,
-            "verified": False,
+            "success": False, 
             "error": str(e)
         }))
-
         sys.exit(1)

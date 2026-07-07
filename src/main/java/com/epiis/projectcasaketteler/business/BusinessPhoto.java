@@ -23,63 +23,63 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 public class BusinessPhoto {
 	@Autowired
 	RepositoryPhoto repositoryPhoto;
-	
+
 	@Autowired
 	RepositoryUser repositoryUser;
-	
-	private String storageDir =  "storage";
-	
+
+	private String storageDir = "storage";
+
 	public ResponsePhotoInsert insert(RequestPhotoInsert request) throws Exception {
 		ResponsePhotoInsert response = new ResponsePhotoInsert();
-		
+
 		Optional<EntityUser> optional = repositoryUser.findById(request.getIdUser());
-		
+
 		EntityUser entityUser = optional.get();
-		
-		Path storagePath = Paths.get(storageDir + "/Photo/" + entityUser.getFirstName());
-		
+
+		Path storagePath = Paths.get(storageDir + "/Photo/" + entityUser.getIdUser());
+
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
 		}
-		
+
 		MultipartFile[] files = request.getFiles();
-		
+
 		if (files != null && files.length > 0) {
 			for (MultipartFile file : files) {
 				if (file.isEmpty()) {
 					continue;
 				}
-				
+
 				String originalFileName = file.getOriginalFilename();
-				
+
 				String extension = "";
-				
+
 				if (originalFileName != null && originalFileName.contains(".")) {
 					extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
 				}
-				
-				String fileName = UUID.randomUUID().toString();
-				
+
+				String fileName = UUID.randomUUID().toString() + "." + extension;
+
 				Path filePath = storagePath.resolve(fileName);
-				
+
 				Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-				
+
 				EntityPhoto entityPhoto = new EntityPhoto();
-				
+
 				entityPhoto.setIdPhoto(UUID.randomUUID().toString());
 				entityPhoto.setParentUser(entityUser);
 				entityPhoto.setNamePhoto(fileName);
 				entityPhoto.setExtensionPhoto(extension);
 				entityPhoto.setCreated_at(new java.sql.Date(new Date().getTime()));
 				entityPhoto.setUpdated_at(entityPhoto.getCreated_at());
-				
+
 				repositoryPhoto.save(entityPhoto);
 			}
 		}
-		
+
 		response.success();
 		response.getListMessage().add("Foto del Estudiante Registrada Correctamente");
-		
+
 		return response;
 	}
 }

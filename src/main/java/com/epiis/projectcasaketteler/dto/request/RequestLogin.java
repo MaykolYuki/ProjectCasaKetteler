@@ -5,7 +5,7 @@ import lombok.Setter;
 
 @Setter
 @Getter
-public class RequestResidenceUpdate {
-	private String name;
-	private String wifiSsid;
+public class RequestLogin {
+    private String email;
+    private String password;
 }

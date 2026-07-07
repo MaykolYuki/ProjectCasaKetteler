@@ -1,13 +1,24 @@
 package com.epiis.projectcasaketteler.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
 import com.epiis.projectcasaketteler.entity.EntityUser;
 
 import java.util.Optional;
+import java.util.List;
 
+public interface RepositoryAttendance extends JpaRepository<EntityAttendance, String> {
 
-public interface RepositoryAttendance extends JpaRepository<EntityAttendance, String>{
-	Optional<EntityAttendance> findTopByParentUserOrderByCreated_atDesc(EntityUser entityUser);
+	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :entityUser ORDER BY a.created_at DESC")
+	Optional<EntityAttendance> findTopByParentUserOrderByCreated_atDesc(@Param("entityUser") EntityUser entityUser);
+
+	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :user ORDER BY a.created_at DESC")
+	List<EntityAttendance> findByParentUserOrderByCreated_atDesc(@Param("user") EntityUser user);
+
+	default Optional<EntityAttendance> findLastAttendanceByUser(EntityUser user) {
+		return findTopByParentUserOrderByCreated_atDesc(user);
+	}
 }

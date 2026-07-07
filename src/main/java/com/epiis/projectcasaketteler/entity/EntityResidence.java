@@ -22,24 +22,27 @@ public class EntityResidence {
 	@Id
 	@Column(name = "idResidence")
 	private String idResidence;
-	
+
 	@Column(name = "name")
 	private String name;
-	
+
 	@Column(name = "idAddress")
 	private String ipAddress;
-	
+
 	@Column(name = "created_at")
 	private Date created_at;
-	
+
 	@Column(name = "updated_at")
 	private Date updated_at;
-	
+
+	@Column(name = "wifiSsid")
+	private String wifiSsid;
+
 	@JsonManagedReference
 	@OneToMany(mappedBy = "parentResidence", cascade = CascadeType.ALL)
 	private List<EntityAdmin> childAdmin;
-	
+
 	@JsonManagedReference
 	@OneToMany(mappedBy = "parentResidence", cascade = CascadeType.ALL)
-	private List<EntityUser> childUser; 
+	private List<EntityUser> childUser;
 }
