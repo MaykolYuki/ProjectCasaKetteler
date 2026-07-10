@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -36,7 +37,8 @@ public class BusinessPhoto {
 	@Autowired
 	private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
 
-	private String storageDir = "storage";
+	@Value("${app.storage.path}")
+	private String storageDir;
 
 	public ResponsePhotoInsert insert(RequestPhotoInsert request) throws Exception {
 		ResponsePhotoInsert response = new ResponsePhotoInsert();

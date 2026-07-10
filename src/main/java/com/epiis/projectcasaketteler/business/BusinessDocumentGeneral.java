@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -35,7 +36,8 @@ public class BusinessDocumentGeneral {
 	@Autowired
 	private DocumentValidationHelper documentValidationHelper;
 
-	private String storageDir = "storage";
+	@Value("${app.storage.path}")
+	private String storageDir;
 
 	public ResponseDocumentGeneralInsert insert(RequestDocumentGeneralInsert request) throws Exception {
 		ResponseDocumentGeneralInsert response = new ResponseDocumentGeneralInsert();
@@ -89,7 +91,7 @@ public class BusinessDocumentGeneral {
 		}
 
 		Path storagePath = Paths
-				.get(storageDir + "/DocumentGeneral/" + entityUser.getFirstName() + "/" + request.getType());
+				.get(storageDir + "/DocumentGeneral/" + entityUser.getIdUser() + "/" + request.getType());
 
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
@@ -205,8 +207,11 @@ public class BusinessDocumentGeneral {
 		}
 
 		EntityDocumentGeneral doc = optional.get();
-		String filePath = storageDir + "/DocumentGeneral/" +
-				doc.getParentUser().getFirstName() + "/" +
+
+		// Usar idUser en lugar de firstName para evitar problemas con
+		// espacios/caracteres
+		String idUser = doc.getParentUser().getIdUser();
+		String filePath = storageDir + "/DocumentGeneral/" + idUser + "/" +
 				doc.getType() + "/" +
 				doc.getNameDocumentGeneral();
 

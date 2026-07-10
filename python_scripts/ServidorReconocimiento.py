@@ -9,6 +9,7 @@ from flask import Flask, request, jsonify
 import base64
 import uuid
 import json
+import sys
 
 app = Flask(__name__)
 
@@ -143,7 +144,9 @@ def verificar():
     temp_path = None
     try:
         image_bytes = base64.b64decode(imagen_base64)
-        temp_dir = "temp/"
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        temp_dir = os.path.join(BASE_DIR, "..", "temp")
+
         os.makedirs(temp_dir, exist_ok=True)
         temp_filename = f"srv_{id_user}_{uuid.uuid4().hex[:8]}.jpg"
         temp_path = os.path.join(temp_dir, temp_filename)

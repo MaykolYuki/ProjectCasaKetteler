@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -32,7 +33,8 @@ public class BusinessDocumentEnter {
 	@Autowired
 	private DocumentValidationHelper documentValidationHelper;
 
-	private String storageDir = "storage";
+	@Value("${app.storage.path}")
+	private String storageDir;;
 
 	public ResponseDocumentEnterInsert insert(RequestDocumentEnterInsert request) throws Exception {
 		ResponseDocumentEnterInsert response = new ResponseDocumentEnterInsert();
@@ -59,7 +61,7 @@ public class BusinessDocumentEnter {
 			return response;
 		}
 
-		Path storagePath = Paths.get(storageDir + "/DocumentEnter/" + entityUser.getFirstName());
+		Path storagePath = Paths.get(storageDir + "/DocumentEnter/" + entityUser.getIdUser());
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
 		}

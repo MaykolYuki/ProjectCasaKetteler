@@ -1,6 +1,7 @@
 package com.epiis.projectcasaketteler.controller;
 
 import java.util.Map;
+import java.util.HashMap;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -125,4 +126,12 @@ public class AttendanceController {
         return ResponseEntity.ok(businessAttendance.getResumenKPI(idResidence));
     }
 
+    @GetMapping(path = "attendance/health")
+    public ResponseEntity<Map<String, Object>> checkHealth() {
+        Map<String, Object> res = new HashMap<>();
+        boolean serverOk = businessAttendance.getPythonFaceRecognitionHelper().isServerRunning();
+        res.put("type", serverOk ? "success" : "error");
+        res.put("reconocimientoFacial", serverOk ? "activo" : "inactivo");
+        return ResponseEntity.ok(res);
+    }
 }

@@ -347,10 +347,30 @@ public class BusinessUser {
 		Optional<EntityUser> entityUser = repositoryUser.findById(userId);
 
 		if (entityUser.isPresent()) {
+			EntityUser user = entityUser.get();
+
+			// Datos del usuario
+			Map<String, Object> userData = new HashMap<>();
+			userData.put("idUser", user.getIdUser());
+			userData.put("firstName", user.getFirstName());
+			userData.put("surName", user.getSurName());
+			userData.put("email", user.getEmail());
+			userData.put("cellPhoneNumber", user.getCellPhoneNumber());
+			userData.put("cellPhoneEmergency", user.getCellPhoneEmergency());
+			userData.put("role", user.getRole());
+			userData.put("active", user.getActive());
+			userData.put("firstLogin", user.getFirstLogin());
+
+			// Datos de residencia — esto es lo que faltaba
+			if (user.getParentResidence() != null) {
+				userData.put("idResidence", user.getParentResidence().getIdResidence());
+				userData.put("residenceName", user.getParentResidence().getName());
+			}
+
 			response.setType("success");
 			response.getListMessage().add("Perfil obtenido correctamente");
 			res.put("message", response);
-			res.put("data", entityUser.get());
+			res.put("data", userData);
 		} else {
 			response.setType("error");
 			response.getListMessage().add("Usuario no encontrado");

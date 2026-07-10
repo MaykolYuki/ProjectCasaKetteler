@@ -40,7 +40,8 @@ public class SecurityConfig {
 								"/casaketteler/indexresidence",
 								"/casaketteler/showresidence/**",
 								"/casaketteler/network/**",
-								"/casaketteler/verify"
+								"/casaketteler/verify",
+								"/casaketteler/attendance/health"
 
 						).permitAll()
 
@@ -61,8 +62,6 @@ public class SecurityConfig {
 								"/casaketteler/registerphoto",
 								"/casaketteler/documents/**", // listar y descargar documentos
 								"/casaketteler/resignation/**", // gestión renuncia admin
-								"/casaketteler/registerdocumentgeneral",
-								"/casaketteler/registerdocumententer",
 								"/casaketteler/attendance/filter",
 								"/casaketteler/attendance/export",
 								"/casaketteler/attendance/kpi")

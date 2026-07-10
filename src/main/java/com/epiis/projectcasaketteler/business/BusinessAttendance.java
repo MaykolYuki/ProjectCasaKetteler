@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
@@ -34,14 +35,25 @@ public class BusinessAttendance {
     @Autowired
     private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
 
+    @Value("${app.temp.path}")
+    private String tempPath;
+
     public ResponseFaceVerification insert(RequestAttendanceInsert request) {
         File tempFile = null;
         ResponseFaceVerification response = new ResponseFaceVerification();
 
+        // Verificar que el servidor de reconocimiento facial esté activo
+        if (!pythonFaceRecognitionHelper.isServerRunning()) {
+            response.error();
+            response.getListMessage()
+                    .add("Error: El servicio de reconocimiento facial no está disponible. Contacte al administrador.");
+            return response;
+        }
+
         try {
             // 1. Usamos una ruta bien definida. "temp" es genial, pero asegurémonos de que
             // sea absoluta.
-            String tempDir = "temp/";
+            String tempDir = tempPath + "/";
             File directory = new File(tempDir);
             if (!directory.exists()) {
                 directory.mkdirs();
@@ -147,6 +159,7 @@ public class BusinessAttendance {
             newAttendance.setParentUser(entityUser);
             newAttendance.setEntryDate(new java.sql.Date(new Date().getTime()));
             newAttendance.setStatus(true);
+            newAttendance.setDescription(request.getDescription());
             newAttendance.setCreated_at(new java.sql.Date(new Date().getTime()));
 
             repositoryAttendance.save(newAttendance);
@@ -374,5 +387,9 @@ public class BusinessAttendance {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    public PythonFaceRecognitionHelper getPythonFaceRecognitionHelper() {
+        return pythonFaceRecognitionHelper;
     }
 }

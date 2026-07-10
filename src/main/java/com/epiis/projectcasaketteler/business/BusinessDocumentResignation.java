@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -34,7 +35,8 @@ public class BusinessDocumentResignation {
 	@Autowired
 	private DocumentValidationHelper documentValidationHelper;
 
-	private String storageDir = "storage";
+	@Value("${app.storage.path}")
+	private String storageDir;
 
 	public ResponseDocumentResignationInsert insert(RequestDocumentResignationInsert request) throws Exception {
 		ResponseDocumentResignationInsert response = new ResponseDocumentResignationInsert();
@@ -63,7 +65,7 @@ public class BusinessDocumentResignation {
 			return response;
 		}
 
-		Path storagePath = Paths.get(storageDir + "/DocumentResignation/" + entityUser.getFirstName());
+		Path storagePath = Paths.get(storageDir + "/DocumentResignation/" + entityUser.getIdUser());
 
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
@@ -171,7 +173,7 @@ public class BusinessDocumentResignation {
 
 		EntityDocumentResignation doc = optional.get();
 		String filePath = storageDir + "/DocumentResignation/" +
-				doc.getParentUser().getFirstName() + "/" +
+				doc.getParentUser().getIdUser() + "/" +
 				doc.getNameDocumentResignation();
 
 		java.nio.file.Path path = java.nio.file.Paths.get(filePath);

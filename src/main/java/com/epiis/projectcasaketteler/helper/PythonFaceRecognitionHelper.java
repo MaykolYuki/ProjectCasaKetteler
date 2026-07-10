@@ -11,6 +11,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
@@ -26,6 +27,12 @@ public class PythonFaceRecognitionHelper {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final ObjectMapper mapper = new ObjectMapper();
+
+    @Value("${app.storage.path}")
+    private String storagePath;
+
+    @Value("${app.temp.path}")
+    private String tempPath;
 
     private String postJson(String endpoint, Map<String, Object> body) throws Exception {
         String jsonBody = mapper.writeValueAsString(body);
@@ -60,7 +67,7 @@ public class PythonFaceRecognitionHelper {
     public ResponseFaceVerification verificarRostro(String rutaImagen, String idUser,
             String bestPhotoFileName) {
         try {
-            String directorioUsuario = "storage/Photo/" + idUser;
+            String directorioUsuario = storagePath + "/Photo/" + idUser;
             String mejorFotoNombre;
 
             if (bestPhotoFileName != null && !bestPhotoFileName.isEmpty()) {
@@ -104,7 +111,7 @@ public class PythonFaceRecognitionHelper {
         File tempFile = null;
         try {
             byte[] imageBytes = Base64.getDecoder().decode(base64Image);
-            String tempDir = "temp/";
+            String tempDir = tempPath + "/";
             new File(tempDir).mkdirs();
             String fileName = "sync_" + idUser + "_" + System.currentTimeMillis() + ".jpg";
             tempFile = new File(tempDir + fileName);
@@ -124,6 +131,21 @@ public class PythonFaceRecognitionHelper {
             if (tempFile != null && tempFile.exists()) {
                 tempFile.delete();
             }
+        }
+    }
+
+    public boolean isServerRunning() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(SERVER_URL + "/health"))
+                    .timeout(Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() == 200;
+        } catch (Exception e) {
+            return false;
         }
     }
 }

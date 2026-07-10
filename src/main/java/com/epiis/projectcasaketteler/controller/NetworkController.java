@@ -42,7 +42,8 @@ public class NetworkController {
     // Endpoint para verificar si el SSID proporcionado es válido
     @GetMapping(path = "network/verify")
     public ResponseEntity<Map<String, Object>> verifyNetwork(
-            @RequestParam String ssid,
+            @RequestParam(required = false) String ssid,
+            @RequestParam(required = false) String bssid,
             @RequestParam String idResidence) {
 
         Map<String, Object> response = new HashMap<>();
@@ -56,8 +57,18 @@ public class NetworkController {
             return ResponseEntity.ok(response);
         }
 
-        String expectedSSID = optional.get().getWifiSsid();
-        boolean isValid = expectedSSID != null && expectedSSID.equals(ssid);
+        EntityResidence residence = optional.get();
+        boolean isValid = false;
+
+        // Priorizar BSSID si está configurado
+        String expectedBSSID = residence.getWifiBssid();
+        String expectedSSID = residence.getWifiSsid();
+
+        if (expectedBSSID != null && !expectedBSSID.isEmpty()) {
+            isValid = expectedBSSID.equalsIgnoreCase(bssid);
+        } else if (expectedSSID != null && !expectedSSID.isEmpty()) {
+            isValid = expectedSSID.equals(ssid);
+        }
 
         response.put("success", true);
         response.put("isValid", isValid);

@@ -1,0 +1,5536 @@
+=== ESTRUCTURA SIMPLIFICADA DEL PROYECTO ===
+Carpeta raíz: /c/Users/yerry/Documents/Ingenieria de Software/BackendCasaKetteler/ProjectCasaKetteler
+
+=============================================
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/business/BusinessAdmin.java
+========================================
+package com.epiis.projectcasaketteler.business;
+
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.epiis.projectcasaketteler.dto.request.RequestAdminInsert;
+import com.epiis.projectcasaketteler.dto.request.RequestAdminUpdate;
+import com.epiis.projectcasaketteler.dto.request.RequestAdminUpdatePassword;
+import com.epiis.projectcasaketteler.dto.response.ResponseAdminDeleteById;
+import com.epiis.projectcasaketteler.dto.response.ResponseAdminGetAll;
+import com.epiis.projectcasaketteler.dto.response.ResponseAdminGetById;
+import com.epiis.projectcasaketteler.dto.response.ResponseAdminInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseAdminUpdate;
+import com.epiis.projectcasaketteler.dto.response.ResponseAdminUpdatePassword;
+import com.epiis.projectcasaketteler.entity.EntityAdmin;
+import com.epiis.projectcasaketteler.entity.EntityResidence;
+import com.epiis.projectcasaketteler.helper.PasswordEncoderHelper;
+import com.epiis.projectcasaketteler.repository.RepositoryAdmin;
+
+@Service
+public class BusinessAdmin {
+	@Autowired
+	private RepositoryAdmin repositoryAdmin;
+
+	@Autowired
+	private PasswordEncoderHelper passwordEncoderHelper;
+
+	public ResponseAdminInsert insert(RequestAdminInsert request) {
+		ResponseAdminInsert response = new ResponseAdminInsert();
+
+		EntityAdmin entityAdmin = new EntityAdmin();
+		EntityResidence entityResidence = new EntityResidence();
+
+		entityResidence.setIdResidence(request.getIdResidence());
+
+		entityAdmin.setIdAdmin(UUID.randomUUID().toString());
+		entityAdmin.setParentResidence(entityResidence);
+		entityAdmin.setFirstName(request.getFirstName());
+		entityAdmin.setSurName(request.getSurName());
+		entityAdmin.setEmail(request.getEmail());
+		entityAdmin.setPassword(passwordEncoderHelper.passwordEncoder().encode(request.getPassword()));
+
+		repositoryAdmin.save(entityAdmin);
+
+		response.success();
+		response.getListMessage().add("Admin Creado Correctamente");
+
+		return response;
+	}
+
+	public Map<String, Object> getAll() {
+		ResponseAdminGetAll response = new ResponseAdminGetAll();
+
+		Map<String, Object> res = new HashMap<>();
+
+		List<EntityAdmin> entityAdmin = repositoryAdmin.findAll();
+
+		response.success();
+		response.getListMessage().add("Admins Extraidos Correctamente");
+
+		res.put("message", response);
+		res.put("data", entityAdmin);
+
+		return res;
+	}
+
+	public Map<String, Object> getById(String idAdmin) {
+		ResponseAdminGetById response = new ResponseAdminGetById();
+
+		Map<String, Object> res = new HashMap<>();
+
+		Optional<EntityAdmin> entityAdmin = repositoryAdmin.findById(idAdmin);
+
+		response.success();
+		response.getListMessage().add("Admin Extraido Correctamente");
+
+		res.put("message", response);
+		res.put("data", entityAdmin);
+
+		return res;
+	}
+
+	public ResponseAdminDeleteById deleteById(String idAdmin) {
+		ResponseAdminDeleteById response = new ResponseAdminDeleteById();
+
+		repositoryAdmin.deleteById(idAdmin);
+
+		response.success();
+		response.getListMessage().add("Admin Eliminado Correctamente");
+
+		return response;
+	}
+
+	public ResponseAdminUpdate update(String idUpdate, RequestAdminUpdate request) {
+		ResponseAdminUpdate response = new ResponseAdminUpdate();
+
+		Optional<EntityAdmin> optional = repositoryAdmin.findById(idUpdate);
+
+		if (optional.isPresent()) {
+			EntityAdmin entityAdmin = optional.get();
+
+			EntityResidence entityResidence = new EntityResidence();
+
+			entityResidence.setIdResidence(request.getIdResidence());
+
+			entityAdmin.setParentResidence(entityResidence);
+			entityAdmin.setFirstName(request.getFirstName());
+			entityAdmin.setSurName(request.getSurName());
+			entityAdmin.setEmail(request.getEmail());
+			entityAdmin.setUpdated_at(new java.sql.Date(new Date().getTime()));
+
+			repositoryAdmin.save(entityAdmin);
+
+			response.success();
+			response.getListMessage().add("Admin Actualizado Correctamente");
+
+			return response;
+		}
+		response.error();
+		response.getListMessage().add("Error el Admin no se Actualizo");
+
+		return response;
+	}
+
+	public ResponseAdminUpdatePassword updatePassword(String email, RequestAdminUpdatePassword request) {
+		ResponseAdminUpdatePassword response = new ResponseAdminUpdatePassword();
+
+		Optional<EntityAdmin> optional = repositoryAdmin.findByEmail(email);
+
+		if (optional.isPresent()) {
+			EntityAdmin entityAdmin = optional.get();
+
+			entityAdmin.setPassword(passwordEncoderHelper.passwordEncoder().encode(request.getPassword()));
+
+			repositoryAdmin.save(entityAdmin);
+
+			response.success();
+			response.getListMessage().add("Contraseña Actualizada Correctamente");
+
+			return response;
+		}
+		response.error();
+		response.getListMessage().add("Error la contraseña no registrada");
+
+		return response;
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/business/BusinessAttendance.java
+========================================
+package com.epiis.projectcasaketteler.business;
+
+import java.io.File;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
+import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
+import com.epiis.projectcasaketteler.dto.response.ResponseAttendancePage;
+import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
+import com.epiis.projectcasaketteler.dto.response.ResponseSyncResult;
+import com.epiis.projectcasaketteler.entity.EntityAttendance;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.helper.PythonFaceRecognitionHelper;
+import com.epiis.projectcasaketteler.repository.RepositoryAttendance;
+import com.epiis.projectcasaketteler.repository.RepositoryUser;
+
+@Service
+public class BusinessAttendance {
+
+    @Autowired
+    private RepositoryAttendance repositoryAttendance;
+
+    @Autowired
+    private RepositoryUser repositoryUser;
+
+    @Autowired
+    private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
+
+    public ResponseFaceVerification insert(RequestAttendanceInsert request) {
+        File tempFile = null;
+        ResponseFaceVerification response = new ResponseFaceVerification();
+
+        try {
+            // 1. Usamos una ruta bien definida. "temp" es genial, pero asegurémonos de que
+            // sea absoluta.
+            String tempDir = "temp/";
+            File directory = new File(tempDir);
+            if (!directory.exists()) {
+                directory.mkdirs();
+            }
+
+            String fileName = "captura_" + request.getIdUser() + ".jpg";
+            String rutaImagen = tempDir + fileName;
+            tempFile = new File(rutaImagen);
+
+            // 2. ¡LA SOLUCIÓN AQUÍ! En lugar de transferTo pasándole el File relativo
+            // directo a Tomcat,
+            // le pasamos la ruta absoluta real que Windows sí entiende al 100%.
+            request.getFile().transferTo(tempFile.getAbsoluteFile());
+
+            // Obtener usuario PRIMERO
+            Optional<EntityUser> optionalUser = repositoryUser.findById(request.getIdUser());
+            if (!optionalUser.isPresent()) {
+                response.error();
+                response.getListMessage().add("Error: Usuario no encontrado.");
+                return response;
+            }
+            EntityUser entityUser = optionalUser.get();
+
+            // Ahora sí, llamar a Python con la referencia cacheada
+            ResponseFaceVerification responsetoPython = pythonFaceRecognitionHelper.verificarRostro(
+                    rutaImagen, request.getIdUser(), entityUser.getBestPhotoReference());
+
+            // RF-12: umbral de similitud ≥85% — única fuente de verdad
+            if (responsetoPython.getSimilarity() < 85.0) {
+                responsetoPython.setVerified(false);
+                responsetoPython.error();
+                responsetoPython.getListMessage().add(
+                        "Error: Rostro no reconocido. Similitud: " +
+                                String.format("%.1f", responsetoPython.getSimilarity()) + "% (mínimo 85%).");
+                return responsetoPython;
+            }
+            responsetoPython.setVerified(true);
+
+            // RF-13/14: Validación de red por BSSID (preferido) o SSID (fallback)
+            String expectedBSSID = entityUser.getParentResidence().getWifiBssid();
+            String expectedSSID = entityUser.getParentResidence().getWifiSsid();
+            String providedBSSID = request.getBssid();
+            String providedSSID = request.getSsid();
+
+            boolean redValida = false;
+
+            if (expectedBSSID != null && !expectedBSSID.isEmpty()) {
+                // Si la residencia tiene BSSID configurado, es obligatorio que coincida
+                redValida = providedBSSID != null && expectedBSSID.equalsIgnoreCase(providedBSSID);
+            } else if (expectedSSID != null && !expectedSSID.isEmpty()) {
+                // Fallback a SSID si no hay BSSID configurado
+                redValida = providedSSID != null && expectedSSID.equals(providedSSID);
+            } else {
+                response.error();
+                response.getListMessage().add("Error: La residencia no tiene una red WiFi configurada.");
+                return response;
+            }
+
+            if (!redValida) {
+                response.error();
+                response.getListMessage().add("Error: Conéctese a la red oficial de la residencia.");
+                return response;
+            }
+
+            Optional<EntityAttendance> optionalAttendance = repositoryAttendance
+                    .findTopByParentUserOrderByCreated_atDesc(entityUser);
+
+            // RF-10: cooldown de 5 minutos entre registros
+            if (optionalAttendance.isPresent()) {
+                EntityAttendance lastAttendance = optionalAttendance.get();
+
+                Date lastTime = lastAttendance.getCreated_at();
+                long diffMinutes = (new Date().getTime() - lastTime.getTime()) / (1000 * 60);
+
+                if (diffMinutes < 5) {
+                    long restante = 5 - diffMinutes;
+                    responsetoPython.error();
+                    responsetoPython.getListMessage().add(
+                            "Error: Debes esperar " + restante + " minuto(s) para registrar nuevamente.");
+                    return responsetoPython;
+                }
+            }
+
+            if (optionalAttendance.isPresent()) {
+                EntityAttendance lastAttendance = optionalAttendance.get();
+
+                if (lastAttendance.getStatus()) {
+                    lastAttendance.setDepartureDate(new java.sql.Date(new Date().getTime()));
+                    lastAttendance.setStatus(false);
+                    lastAttendance.setUpdated_at(new java.sql.Date(new Date().getTime()));
+
+                    repositoryAttendance.save(lastAttendance);
+
+                    responsetoPython.setEntrada(false);
+                    responsetoPython.success();
+                    responsetoPython.getListMessage().add("Salida registrada correctamente.");
+                    return responsetoPython;
+                }
+            }
+
+            EntityAttendance newAttendance = new EntityAttendance();
+            newAttendance.setIdAtendance(UUID.randomUUID().toString());
+            newAttendance.setParentUser(entityUser);
+            newAttendance.setEntryDate(new java.sql.Date(new Date().getTime()));
+            newAttendance.setStatus(true);
+            newAttendance.setCreated_at(new java.sql.Date(new Date().getTime()));
+
+            repositoryAttendance.save(newAttendance);
+
+            responsetoPython.setEntrada(true);
+            responsetoPython.success();
+            responsetoPython.getListMessage().add("Entrada registrada correctamente.");
+            return responsetoPython;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            response.error();
+            response.getListMessage().add("Error: El servicio no funciona por el momento.");
+            return response;
+        } finally {
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
+    }
+
+    public ResponseSyncResult syncOfflineRecords(String userId, List<RequestAttendanceSync> records) {
+        ResponseSyncResult result = new ResponseSyncResult();
+        result.setType("success");
+
+        for (RequestAttendanceSync record : records) {
+            String idUser = record.getIdUser();
+            String recordedAtStr = record.getRecordedAt() != null ? record.getRecordedAt().toString() : "desconocido";
+
+            try {
+                // 1. Buscar usuario
+                Optional<EntityUser> optionalUser = repositoryUser.findById(idUser);
+                if (!optionalUser.isPresent()) {
+                    result.agregarRechazado(idUser, recordedAtStr, "Usuario no encontrado");
+                    continue;
+                }
+                EntityUser entityUser = optionalUser.get();
+
+                // 2. Validar red por SSID/BSSID (opcional para offline)
+                if (record.getBssid() != null && !record.getBssid().isEmpty()) {
+                    String expectedBSSID = entityUser.getParentResidence().getWifiBssid();
+                    if (expectedBSSID == null || !expectedBSSID.equalsIgnoreCase(record.getBssid())) {
+                        result.agregarRechazado(idUser, recordedAtStr, "BSSID no corresponde a la red oficial");
+                        continue;
+                    }
+                } else if (record.getSsid() != null && !record.getSsid().isEmpty()) {
+                    String expectedSSID = entityUser.getParentResidence().getWifiSsid();
+                    if (expectedSSID == null || !expectedSSID.equals(record.getSsid())) {
+                        result.agregarRechazado(idUser, recordedAtStr, "SSID no corresponde a la red oficial");
+                        continue;
+                    }
+                }
+
+                // 3. Re-verificar con Python
+                ResponseFaceVerification serverResult = pythonFaceRecognitionHelper
+                        .verificarRostroBase64(
+                                record.getBase64Image(),
+                                idUser,
+                                entityUser.getBestPhotoReference());
+
+                if (serverResult.getSimilarity() < 85.0) {
+                    result.agregarRechazado(idUser, recordedAtStr,
+                            "Similitud insuficiente: " +
+                                    String.format("%.1f", serverResult.getSimilarity()) + "% (mínimo 85%)");
+                    continue;
+                }
+
+                // 4. Verificar duplicado
+                if (isDuplicateSync(entityUser, record.getRecordedAt())) {
+                    result.agregarRechazado(idUser, recordedAtStr,
+                            "Registro duplicado — ya existe uno en ±1 minuto");
+                    continue;
+                }
+
+                // 5. Guardar
+                EntityAttendance attendance = new EntityAttendance();
+                attendance.setIdAtendance(UUID.randomUUID().toString());
+                attendance.setParentUser(entityUser);
+                attendance.setRecordedAt(record.getRecordedAt());
+                attendance.setSyncedAt(new Date());
+                attendance.setClientSimilarity(record.getClientSimilarity());
+                attendance.setServerSimilarity(serverResult.getSimilarity());
+                attendance.setVerifiedByServer(true);
+                attendance.setStatus(record.getIsEntry());
+                attendance.setCreated_at(new Date());
+
+                repositoryAttendance.save(attendance);
+                result.agregarProcesado(idUser, recordedAtStr);
+
+            } catch (Exception e) {
+                result.agregarRechazado(idUser, recordedAtStr,
+                        "Error inesperado: " + e.getMessage());
+            }
+        }
+
+        return result;
+    }
+
+    private boolean isDuplicateSync(EntityUser user, Date recordedAt) {
+        List<EntityAttendance> recientes = repositoryAttendance
+                .findByParentUserOrderByCreated_atDesc(user);
+
+        for (EntityAttendance a : recientes) {
+            if (a.getRecordedAt() == null)
+                continue;
+            long diffMs = Math.abs(a.getRecordedAt().getTime() - recordedAt.getTime());
+            long diffMin = diffMs / (1000 * 60);
+            if (diffMin <= 1)
+                return true;
+        }
+        return false;
+    }
+
+    public Map<String, Object> getByUser(String userId) {
+        Map<String, Object> res = new HashMap<>();
+
+        Optional<EntityUser> optionalUser = repositoryUser.findById(userId);
+
+        if (!optionalUser.isPresent()) {
+            res.put("type", "error");
+            res.put("message", "Usuario no encontrado");
+            res.put("data", null);
+            return res;
+        }
+
+        EntityUser entityUser = optionalUser.get();
+
+        List<EntityAttendance> attendances = repositoryAttendance
+                .findByParentUserOrderByCreated_atDesc(entityUser);
+
+        res.put("type", "success");
+        res.put("message", "Asistencias obtenidas correctamente");
+        res.put("data", attendances);
+
+        return res;
+    }
+
+    // RF-30/31: Residente consulta su propia asistencia con filtros y paginación
+    public Map<String, Object> getByFilters(String userId, String fechaInicio, String fechaFin,
+            Boolean estado, int page, int size) {
+        Map<String, Object> res = new HashMap<>();
+
+        Optional<EntityUser> optionalUser = repositoryUser.findById(userId);
+        if (!optionalUser.isPresent()) {
+            res.put("type", "error");
+            res.put("message", "Usuario no encontrado");
+            return res;
+        }
+
+        EntityUser user = optionalUser.get();
+        Date inicio = parseFecha(fechaInicio, false);
+        Date fin = parseFecha(fechaFin, true);
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+
+        org.springframework.data.domain.Page<EntityAttendance> resultado = repositoryAttendance.findByFilters(user,
+                inicio, fin, estado, pageable);
+
+        res.put("type", "success");
+        res.put("message", "Asistencias obtenidas correctamente");
+        res.put("data", new ResponseAttendancePage(resultado));
+        return res;
+    }
+
+    // RF-30/31: Admin consulta asistencia de cualquier residente con filtros
+    public Map<String, Object> getByFiltersAdmin(String idUser, String fechaInicio,
+            String fechaFin, Boolean estado, int page, int size) {
+        Map<String, Object> res = new HashMap<>();
+
+        Date inicio = parseFecha(fechaInicio, false);
+        Date fin = parseFecha(fechaFin, true);
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+
+        org.springframework.data.domain.Page<EntityAttendance> resultado = repositoryAttendance
+                .findByFiltersAdmin(inicio, fin, estado, idUser, pageable);
+
+        res.put("type", "success");
+        res.put("message", "Asistencias obtenidas correctamente");
+        res.put("data", new ResponseAttendancePage(resultado));
+        return res;
+    }
+
+    public Map<String, Object> getResumenKPI(String idResidence) {
+        Map<String, Object> res = new HashMap<>();
+
+        // Total de residentes activos por residencia
+        long totalResidentes;
+        if (idResidence == null || idResidence.isEmpty()) {
+            totalResidentes = repositoryUser.findAll().stream()
+                    .filter(u -> Boolean.TRUE.equals(u.getActive()))
+                    .count();
+        } else {
+            totalResidentes = repositoryUser.countActivosByResidencia(idResidence);
+        }
+
+        // Presentes hoy — tienen una entrada abierta (status=true) creada hoy
+        java.time.LocalDate hoy = java.time.LocalDate.now();
+        Date inicioDia = java.sql.Date.valueOf(hoy);
+        Date finDia = java.sql.Date.valueOf(hoy.plusDays(1));
+
+        long presentes = repositoryAttendance.countPresentesHoy(
+                inicioDia, finDia,
+                (idResidence == null || idResidence.isEmpty()) ? null : idResidence);
+        long ausentes = totalResidentes - presentes;
+
+        res.put("type", "success");
+        res.put("totalResidentes", totalResidentes);
+        res.put("presentes", presentes);
+        res.put("ausentes", ausentes < 0 ? 0 : ausentes);
+        res.put("fecha", hoy.toString());
+
+        return res;
+    }
+
+    private Date parseFecha(String fecha, boolean finDelDia) {
+        if (fecha == null || fecha.isEmpty())
+            return null;
+        try {
+            java.time.LocalDate localDate = java.time.LocalDate.parse(fecha);
+            if (finDelDia) {
+                return java.sql.Date.valueOf(localDate.plusDays(1));
+            }
+            return java.sql.Date.valueOf(localDate);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/business/BusinessAttendanceExport.java
+========================================
+package com.epiis.projectcasaketteler.business;
+
+import java.io.ByteArrayOutputStream;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.lowagie.text.Document;
+import com.lowagie.text.Element;
+import com.lowagie.text.FontFactory;
+import com.lowagie.text.PageSize;
+import com.lowagie.text.Paragraph;
+import com.lowagie.text.Phrase;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfWriter;
+
+import com.epiis.projectcasaketteler.entity.EntityAttendance;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.repository.RepositoryAttendance;
+import com.epiis.projectcasaketteler.repository.RepositoryUser;
+
+@Service
+public class BusinessAttendanceExport {
+
+    @Autowired
+    private RepositoryAttendance repositoryAttendance;
+
+    @Autowired
+    private RepositoryUser repositoryUser;
+
+    private List<EntityAttendance> obtenerDatos(String idUser, String fechaInicio,
+            String fechaFin, Boolean estado) {
+        Date inicio = parseFecha(fechaInicio, false);
+        Date fin = parseFecha(fechaFin, true);
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0,
+                Integer.MAX_VALUE);
+
+        if (idUser != null && !idUser.isEmpty()) {
+            Optional<EntityUser> optional = repositoryUser.findById(idUser);
+            if (optional.isPresent()) {
+                return repositoryAttendance.findByFilters(
+                        optional.get(), inicio, fin, estado, pageable).getContent();
+            }
+            return List.of();
+        }
+
+        return repositoryAttendance.findByFiltersAdmin(
+                inicio, fin, estado, null, pageable).getContent();
+    }
+
+    public byte[] exportarExcel(String idUser, String fechaInicio,
+            String fechaFin, Boolean estado) throws Exception {
+        List<EntityAttendance> registros = obtenerDatos(idUser, fechaInicio, fechaFin, estado);
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Asistencias");
+
+            // Estilo encabezado
+            CellStyle headerStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.LIGHT_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            // Encabezados
+            Row header = sheet.createRow(0);
+            String[] columnas = { "ID", "Residente", "Fecha Entrada", "Fecha Salida", "Estado", "Duración (min)" };
+            for (int i = 0; i < columnas.length; i++) {
+                Cell cell = header.createCell(i);
+                cell.setCellValue(columnas[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Datos
+            int rowNum = 1;
+            for (EntityAttendance a : registros) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(a.getIdAtendance());
+                row.createCell(1).setCellValue(
+                        a.getParentUser() != null
+                                ? a.getParentUser().getFirstName() + " " + a.getParentUser().getSurName()
+                                : "");
+                row.createCell(2).setCellValue(
+                        a.getEntryDate() != null ? a.getEntryDate().toString() : "");
+                row.createCell(3).setCellValue(
+                        a.getDepartureDate() != null ? a.getDepartureDate().toString() : "Abierta");
+                row.createCell(4).setCellValue(Boolean.TRUE.equals(a.getStatus()) ? "Entrada" : "Salida");
+
+                // Duración en minutos
+                if (a.getEntryDate() != null && a.getDepartureDate() != null) {
+                    long diff = (a.getDepartureDate().getTime() - a.getEntryDate().getTime()) / (1000 * 60);
+                    row.createCell(5).setCellValue(diff);
+                } else {
+                    row.createCell(5).setCellValue("-");
+                }
+            }
+
+            // Autoajustar columnas
+            for (int i = 0; i < columnas.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    public byte[] exportarPDF(String idUser, String fechaInicio,
+            String fechaFin, Boolean estado) throws Exception {
+        List<EntityAttendance> registros = obtenerDatos(idUser, fechaInicio, fechaFin, estado);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Document document = new Document(PageSize.A4.rotate());
+        PdfWriter.getInstance(document, out);
+        document.open();
+
+        // Fuentes
+        com.lowagie.text.Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16);
+        com.lowagie.text.Font subFont = FontFactory.getFont(FontFactory.HELVETICA, 10);
+        com.lowagie.text.Font headerFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
+        com.lowagie.text.Font dataFont = FontFactory.getFont(FontFactory.HELVETICA, 9);
+
+        // Título
+        Paragraph title = new Paragraph("Reporte de Asistencias", titleFont);
+        title.setAlignment(Element.ALIGN_CENTER);
+        title.setSpacingAfter(20);
+        document.add(title);
+
+        // Fecha de generación
+        Paragraph fecha = new Paragraph("Generado: " + new Date().toString(), subFont);
+        fecha.setAlignment(Element.ALIGN_RIGHT);
+        fecha.setSpacingAfter(10);
+        document.add(fecha);
+
+        // Tabla
+        PdfPTable table = new PdfPTable(6);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[] { 3f, 4f, 4f, 4f, 2f, 2f });
+
+        // Encabezados
+        String[] columnas = { "ID", "Residente", "Entrada", "Salida", "Estado", "Dur. (min)" };
+        for (String col : columnas) {
+            PdfPCell cell = new PdfPCell(new Phrase(col, headerFont));
+            cell.setBackgroundColor(new java.awt.Color(173, 216, 230));
+            cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            cell.setPadding(5);
+            table.addCell(cell);
+        }
+
+        // Datos
+        for (EntityAttendance a : registros) {
+            table.addCell(new Phrase(a.getIdAtendance().substring(0, 8) + "...", dataFont));
+            table.addCell(new Phrase(
+                    a.getParentUser() != null ? a.getParentUser().getFirstName() + " " + a.getParentUser().getSurName()
+                            : "",
+                    dataFont));
+            table.addCell(new Phrase(
+                    a.getEntryDate() != null ? a.getEntryDate().toString() : "", dataFont));
+            table.addCell(new Phrase(
+                    a.getDepartureDate() != null ? a.getDepartureDate().toString() : "Abierta", dataFont));
+            table.addCell(new Phrase(
+                    Boolean.TRUE.equals(a.getStatus()) ? "Entrada" : "Salida", dataFont));
+
+            if (a.getEntryDate() != null && a.getDepartureDate() != null) {
+                long diff = (a.getDepartureDate().getTime() - a.getEntryDate().getTime()) / (1000 * 60);
+                table.addCell(new Phrase(String.valueOf(diff), dataFont));
+            } else {
+                table.addCell(new Phrase("-", dataFont));
+            }
+        }
+
+        document.add(table);
+        document.close();
+        return out.toByteArray();
+    }
+
+    private Date parseFecha(String fecha, boolean finDelDia) {
+        if (fecha == null || fecha.isEmpty())
+            return null;
+        try {
+            java.time.LocalDate localDate = java.time.LocalDate.parse(fecha);
+            if (finDelDia) {
+                return java.sql.Date.valueOf(localDate.plusDays(1));
+            }
+            return java.sql.Date.valueOf(localDate);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/business/BusinessDocumentEnter.java
+========================================
+package com.epiis.projectcasaketteler.business;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.Date;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.epiis.projectcasaketteler.dto.request.RequestDocumentEnterInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseDocumentEnterInsert;
+import com.epiis.projectcasaketteler.entity.EntityDocumentEnter;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.helper.DocumentValidationHelper;
+import com.epiis.projectcasaketteler.repository.RepositoryDocumentEnter;
+import com.epiis.projectcasaketteler.repository.RepositoryUser;
+
+@Service
+public class BusinessDocumentEnter {
+
+	@Autowired
+	private RepositoryDocumentEnter repositoryDocumentEnter;
+
+	@Autowired
+	private RepositoryUser repositoryUser;
+
+	@Autowired
+	private DocumentValidationHelper documentValidationHelper;
+
+	private String storageDir = "storage";
+
+	public ResponseDocumentEnterInsert insert(RequestDocumentEnterInsert request) throws Exception {
+		ResponseDocumentEnterInsert response = new ResponseDocumentEnterInsert();
+
+		Optional<EntityUser> optional = repositoryUser.findById(request.getIdUser());
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Error: Usuario no encontrado");
+			return response;
+		}
+		EntityUser entityUser = optional.get();
+
+		MultipartFile file = request.getFile();
+		if (file == null || file.isEmpty()) {
+			response.error();
+			response.getListMessage().add("Error: No se ha adjuntado ningún archivo o está vacío");
+			return response;
+		}
+
+		String validationError = documentValidationHelper.validate(file);
+		if (validationError != null) {
+			response.error();
+			response.getListMessage().add("Error: " + validationError);
+			return response;
+		}
+
+		Path storagePath = Paths.get(storageDir + "/DocumentEnter/" + entityUser.getFirstName());
+		if (!Files.exists(storagePath)) {
+			Files.createDirectories(storagePath);
+		}
+
+		String originalFileName = file.getOriginalFilename();
+		String extension = "";
+		if (originalFileName != null && originalFileName.contains(".")) {
+			extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
+		}
+
+		String fileNameUUID = UUID.randomUUID().toString();
+		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+
+		Path filePath = storagePath.resolve(filePhysicalName);
+		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+		EntityDocumentEnter entityDocumentEnter = new EntityDocumentEnter();
+		entityDocumentEnter.setIdDocumentEnter(fileNameUUID);
+		entityDocumentEnter.setParentUser(entityUser);
+		entityDocumentEnter.setNameDocumentEnter(filePhysicalName);
+		entityDocumentEnter.setExtensionDocumentEnter(extension);
+		entityDocumentEnter.setCreated_at(new java.sql.Date(new Date().getTime()));
+
+		repositoryDocumentEnter.save(entityDocumentEnter);
+
+		response.success();
+		response.getListMessage().add("Documento de Entrada Registrado Exitosamente");
+
+		return response;
+	}
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/business/BusinessDocumentGeneral.java
+========================================
+package com.epiis.projectcasaketteler.business;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.epiis.projectcasaketteler.dto.request.RequestDocumentGeneralInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseDocumentGeneralInsert;
+import com.epiis.projectcasaketteler.entity.EntityDocumentGeneral;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.helper.DocumentValidationHelper;
+import com.epiis.projectcasaketteler.repository.RepositoryDocumentGeneral;
+import com.epiis.projectcasaketteler.repository.RepositoryUser;
+
+@Service
+public class BusinessDocumentGeneral {
+
+	@Autowired
+	private RepositoryDocumentGeneral repositoryDocumentGeneral;
+
+	@Autowired
+	private RepositoryUser repositoryUser;
+
+	@Autowired
+	private DocumentValidationHelper documentValidationHelper;
+
+	private String storageDir = "storage";
+
+	public ResponseDocumentGeneralInsert insert(RequestDocumentGeneralInsert request) throws Exception {
+		ResponseDocumentGeneralInsert response = new ResponseDocumentGeneralInsert();
+
+		Optional<EntityUser> optional = repositoryUser.findById(request.getIdUser());
+
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Error: Usuario no encontrado");
+			return response;
+		}
+
+		EntityUser entityUser = optional.get();
+
+		if ("PAGO".equalsIgnoreCase(request.getType())) {
+			String period = getCurrentMonthPeriod();
+			Optional<EntityDocumentGeneral> existing = repositoryDocumentGeneral
+					.findByParentUserAndTypeAndPeriod(entityUser, request.getType(), period);
+			if (existing.isPresent()) {
+				response.error();
+				response.getListMessage().add(
+						"Error: Ya subiste tu constancia de pago este mes (" + period + ")");
+				return response;
+			}
+		}
+
+		if ("NOTAS".equalsIgnoreCase(request.getType())) {
+			String period = getCurrentSemesterPeriod();
+			Optional<EntityDocumentGeneral> existing = repositoryDocumentGeneral
+					.findByParentUserAndTypeAndPeriod(entityUser, request.getType(), period);
+			if (existing.isPresent()) {
+				response.error();
+				response.getListMessage().add(
+						"Error: Ya subiste tu constancia de notas este semestre (" + period + ")");
+				return response;
+			}
+		}
+
+		MultipartFile file = request.getFile();
+		if (file == null || file.isEmpty()) {
+			response.error();
+			response.getListMessage().add("Error: No se ha adjuntado ningún archivo o está vacío");
+			return response;
+		}
+
+		String validationError = documentValidationHelper.validate(file);
+		if (validationError != null) {
+			response.error();
+			response.getListMessage().add("Error: " + validationError);
+			return response;
+		}
+
+		Path storagePath = Paths
+				.get(storageDir + "/DocumentGeneral/" + entityUser.getFirstName() + "/" + request.getType());
+
+		if (!Files.exists(storagePath)) {
+			Files.createDirectories(storagePath);
+		}
+
+		String originalFileName = file.getOriginalFilename();
+		String extension = "";
+		if (originalFileName != null && originalFileName.contains(".")) {
+			extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
+		}
+
+		String fileNameUUID = UUID.randomUUID().toString();
+		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+
+		Path filePath = storagePath.resolve(filePhysicalName);
+		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+		EntityDocumentGeneral entityDocumentGeneral = new EntityDocumentGeneral();
+		entityDocumentGeneral.setIdDocumentGeneral(fileNameUUID);
+		entityDocumentGeneral.setParentUser(entityUser);
+		entityDocumentGeneral.setType(request.getType());
+		entityDocumentGeneral.setPeriod(
+				"PAGO".equalsIgnoreCase(request.getType()) ? getCurrentMonthPeriod()
+						: "NOTAS".equalsIgnoreCase(request.getType()) ? getCurrentSemesterPeriod() : null);
+
+		entityDocumentGeneral.setNameDocumentGeneral(filePhysicalName);
+		entityDocumentGeneral.setExtensionDocumentGeneral(extension);
+		entityDocumentGeneral.setCreated_at(new java.sql.Date(new Date().getTime()));
+		entityDocumentGeneral.setUpdated_at(entityDocumentGeneral.getCreated_at());
+
+		repositoryDocumentGeneral.save(entityDocumentGeneral);
+
+		response.success();
+		response.getListMessage().add("Documentos Generales Registrados Correctamente");
+
+		return response;
+	}
+
+	public Map<String, Object> getByUser(String idUser, String type) {
+		Map<String, Object> res = new HashMap<>();
+
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+		if (!optional.isPresent()) {
+			res.put("type", "error");
+			res.put("message", "Usuario no encontrado");
+			res.put("data", null);
+			return res;
+		}
+
+		EntityUser user = optional.get();
+		List<EntityDocumentGeneral> docs;
+
+		if (type != null && !type.isEmpty()) {
+			docs = repositoryDocumentGeneral
+					.findByParentUserAndTypeOrderByCreated_atDesc(user, type);
+		} else {
+			docs = repositoryDocumentGeneral
+					.findByParentUserOrderByCreated_atDesc(user);
+		}
+
+		res.put("type", "success");
+		res.put("message", "Documentos obtenidos correctamente");
+		res.put("data", docs);
+		return res;
+	}
+
+	public Map<String, Object> getMyDownloadableDocuments(String idUser) {
+		Map<String, Object> res = new HashMap<>();
+
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+		if (!optional.isPresent()) {
+			res.put("type", "error");
+			res.put("message", "Usuario no encontrado");
+			res.put("data", null);
+			return res;
+		}
+
+		List<EntityDocumentGeneral> docs = repositoryDocumentGeneral
+				.findByParentUserAndDownloadableTrueOrderByCreated_atDesc(optional.get());
+
+		res.put("type", "success");
+		res.put("message", "Documentos descargables obtenidos correctamente");
+		res.put("data", docs);
+		return res;
+	}
+
+	public ResponseDocumentGeneralInsert updateStatus(String idDocument, String status, String observations) {
+		ResponseDocumentGeneralInsert response = new ResponseDocumentGeneralInsert();
+
+		Optional<EntityDocumentGeneral> optional = repositoryDocumentGeneral.findById(idDocument);
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Error: Documento no encontrado");
+			return response;
+		}
+
+		EntityDocumentGeneral doc = optional.get();
+		doc.setStatus(EntityDocumentGeneral.DocumentStatus.valueOf(status));
+		doc.setObservations(observations);
+		doc.setUpdated_at(new java.sql.Date(new Date().getTime()));
+
+		repositoryDocumentGeneral.save(doc);
+
+		response.success();
+		response.getListMessage().add("Documento actualizado correctamente");
+		return response;
+	}
+
+	public org.springframework.core.io.Resource download(String idDocument) throws Exception {
+		Optional<EntityDocumentGeneral> optional = repositoryDocumentGeneral.findById(idDocument);
+		if (!optional.isPresent()) {
+			throw new RuntimeException("Documento no encontrado");
+		}
+
+		EntityDocumentGeneral doc = optional.get();
+		String filePath = storageDir + "/DocumentGeneral/" +
+				doc.getParentUser().getFirstName() + "/" +
+				doc.getType() + "/" +
+				doc.getNameDocumentGeneral();
+
+		java.nio.file.Path path = java.nio.file.Paths.get(filePath);
+		return new org.springframework.core.io.UrlResource(path.toUri());
+	}
+
+	private String getCurrentMonthPeriod() {
+		java.time.LocalDate now = java.time.LocalDate.now();
+		return now.getYear() + "-" + String.format("%02d", now.getMonthValue());
+	}
+
+	private String getCurrentSemesterPeriod() {
+		java.time.LocalDate now = java.time.LocalDate.now();
+		int semester = now.getMonthValue() <= 6 ? 1 : 2;
+		return now.getYear() + "-" + semester;
+	}
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/business/BusinessDocumentResignation.java
+========================================
+package com.epiis.projectcasaketteler.business;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.epiis.projectcasaketteler.dto.request.RequestDocumentResignationInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseDocumentResignationInsert;
+import com.epiis.projectcasaketteler.entity.EntityDocumentResignation;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.helper.DocumentValidationHelper;
+import com.epiis.projectcasaketteler.repository.RepositoryDocumentResignation;
+import com.epiis.projectcasaketteler.repository.RepositoryUser;
+
+@Service
+public class BusinessDocumentResignation {
+	@Autowired
+	private RepositoryDocumentResignation repositoryDocumentResignation;
+
+	@Autowired
+	private RepositoryUser repositoryUser;
+
+	@Autowired
+	private DocumentValidationHelper documentValidationHelper;
+
+	private String storageDir = "storage";
+
+	public ResponseDocumentResignationInsert insert(RequestDocumentResignationInsert request) throws Exception {
+		ResponseDocumentResignationInsert response = new ResponseDocumentResignationInsert();
+
+		Optional<EntityUser> optional = repositoryUser.findById(request.getIdUser());
+
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Error: Usuario no encontrado");
+			return response;
+		}
+
+		EntityUser entityUser = optional.get();
+
+		MultipartFile file = request.getFile();
+		if (file == null || file.isEmpty()) {
+			response.error();
+			response.getListMessage().add("Error: No se ha adjuntado ningún archivo o está vacío");
+			return response;
+		}
+
+		String validationError = documentValidationHelper.validate(file);
+		if (validationError != null) {
+			response.error();
+			response.getListMessage().add("Error: " + validationError);
+			return response;
+		}
+
+		Path storagePath = Paths.get(storageDir + "/DocumentResignation/" + entityUser.getFirstName());
+
+		if (!Files.exists(storagePath)) {
+			Files.createDirectories(storagePath);
+		}
+
+		String originalFileName = file.getOriginalFilename();
+		String extension = "";
+		if (originalFileName != null && originalFileName.contains(".")) {
+			extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
+		}
+
+		String fileNameUUID = UUID.randomUUID().toString();
+		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+
+		Path filePath = storagePath.resolve(filePhysicalName);
+		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+		EntityDocumentResignation entityDocumentResignation = new EntityDocumentResignation();
+
+		entityDocumentResignation.setIdDocumentResignation(fileNameUUID);
+		entityDocumentResignation.setParentUser(entityUser);
+		entityDocumentResignation.setNameDocumentResignation(filePhysicalName);
+		entityDocumentResignation.setExtensionDocumentResignation(extension);
+		entityDocumentResignation.setStatus(EntityDocumentResignation.ResignationStatus.PENDIENTE);
+		entityDocumentResignation.setCreated_at(new java.sql.Date(new Date().getTime()));
+		entityDocumentResignation.setUpdated_at(entityDocumentResignation.getCreated_at());
+
+		repositoryDocumentResignation.save(entityDocumentResignation);
+
+		response.success();
+		response.getListMessage().add("Documento de Renuncia Registrado Exitosamente");
+
+		return response;
+	}
+
+	public Map<String, Object> getByUser(String idUser) {
+		Map<String, Object> res = new HashMap<>();
+
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+		if (!optional.isPresent()) {
+			res.put("type", "error");
+			res.put("message", "Usuario no encontrado");
+			res.put("data", null);
+			return res;
+		}
+
+		List<EntityDocumentResignation> docs = repositoryDocumentResignation
+				.findByParentUserOrderByCreated_atDesc(optional.get());
+
+		res.put("type", "success");
+		res.put("message", "Renuncias obtenidas correctamente");
+		res.put("data", docs);
+		return res;
+	}
+
+	public Map<String, Object> getMyResignation(String idUser) {
+		Map<String, Object> res = new HashMap<>();
+
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+		if (!optional.isPresent()) {
+			res.put("type", "error");
+			res.put("message", "Usuario no encontrado");
+			res.put("data", null);
+			return res;
+		}
+
+		Optional<EntityDocumentResignation> doc = repositoryDocumentResignation
+				.findTopByParentUserOrderByCreated_atDesc(optional.get());
+
+		res.put("type", "success");
+		res.put("message", "Renuncia obtenida correctamente");
+		res.put("data", doc.orElse(null));
+		return res;
+	}
+
+	public ResponseDocumentResignationInsert updateStatus(
+			String idDocument, String status, String observations) {
+		ResponseDocumentResignationInsert response = new ResponseDocumentResignationInsert();
+
+		Optional<EntityDocumentResignation> optional = repositoryDocumentResignation.findById(idDocument);
+
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Error: Documento no encontrado");
+			return response;
+		}
+
+		EntityDocumentResignation doc = optional.get();
+		doc.setStatus(EntityDocumentResignation.ResignationStatus.valueOf(status));
+		doc.setObservations(observations);
+		doc.setUpdated_at(new java.sql.Date(new Date().getTime()));
+
+		repositoryDocumentResignation.save(doc);
+
+		response.success();
+		response.getListMessage().add("Estado actualizado correctamente");
+		return response;
+	}
+
+	public org.springframework.core.io.Resource download(String idDocument) throws Exception {
+		Optional<EntityDocumentResignation> optional = repositoryDocumentResignation.findById(idDocument);
+		if (!optional.isPresent()) {
+			throw new RuntimeException("Documento no encontrado");
+		}
+
+		EntityDocumentResignation doc = optional.get();
+		String filePath = storageDir + "/DocumentResignation/" +
+				doc.getParentUser().getFirstName() + "/" +
+				doc.getNameDocumentResignation();
+
+		java.nio.file.Path path = java.nio.file.Paths.get(filePath);
+		return new org.springframework.core.io.UrlResource(path.toUri());
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/business/BusinessPhoto.java
+========================================
+package com.epiis.projectcasaketteler.business;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.epiis.projectcasaketteler.dto.request.RequestPhotoInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponsePhotoFilter;
+import com.epiis.projectcasaketteler.dto.response.ResponsePhotoInsert;
+import com.epiis.projectcasaketteler.entity.EntityPhoto;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.helper.PythonFaceRecognitionHelper;
+import com.epiis.projectcasaketteler.repository.RepositoryPhoto;
+import com.epiis.projectcasaketteler.repository.RepositoryUser;
+
+@Service
+public class BusinessPhoto {
+	@Autowired
+	private RepositoryPhoto repositoryPhoto;
+
+	@Autowired
+	private RepositoryUser repositoryUser;
+
+	@Autowired
+	private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
+
+	private String storageDir = "storage";
+
+	public ResponsePhotoInsert insert(RequestPhotoInsert request) throws Exception {
+		ResponsePhotoInsert response = new ResponsePhotoInsert();
+
+		Optional<EntityUser> optional = repositoryUser.findById(request.getIdUser());
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Error: Usuario no encontrado");
+			return response;
+		}
+
+		EntityUser entityUser = optional.get();
+
+		Path storagePath = Paths.get(storageDir + "/Photo/" + entityUser.getIdUser());
+		if (!Files.exists(storagePath)) {
+			Files.createDirectories(storagePath);
+		}
+
+		MultipartFile[] files = request.getFiles();
+		List<String> savedFileNames = new ArrayList<>();
+
+		// UN SOLO LOOP — guarda y registra nombre
+		if (files != null && files.length > 0) {
+			for (MultipartFile file : files) {
+				if (file.isEmpty())
+					continue;
+
+				String originalFileName = file.getOriginalFilename();
+				String extension = "";
+				if (originalFileName != null && originalFileName.contains(".")) {
+					extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
+				}
+
+				String fileName = UUID.randomUUID().toString() + "." + extension;
+				Path filePath = storagePath.resolve(fileName);
+				Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+				EntityPhoto entityPhoto = new EntityPhoto();
+				entityPhoto.setIdPhoto(UUID.randomUUID().toString());
+				entityPhoto.setParentUser(entityUser);
+				entityPhoto.setNamePhoto(fileName);
+				entityPhoto.setExtensionPhoto(extension);
+				entityPhoto.setCreated_at(new java.sql.Date(new Date().getTime()));
+				entityPhoto.setUpdated_at(entityPhoto.getCreated_at());
+				repositoryPhoto.save(entityPhoto);
+
+				savedFileNames.add(fileName); // registrar nombre para el reporte
+			}
+		}
+
+		// Reporte de calidad — UNA SOLA llamada al filtro
+		List<Map<String, Object>> qualityReport = new ArrayList<>();
+
+		ResponsePhotoFilter filtro = pythonFaceRecognitionHelper
+				.seleccionarMejorFoto(storageDir + "/Photo/" + entityUser.getIdUser());
+
+		// GUARDAR la mejor foto en el usuario para reutilizarla después
+		if (filtro.isSuccess() && filtro.getBestImage() != null) {
+			entityUser.setBestPhotoReference(filtro.getBestImage());
+			repositoryUser.save(entityUser);
+		}
+		// Después de llamar al filtro, antes del loop del reporte
+		System.out.println("=== DEBUG FILTRO ===");
+		System.out.println("Best image del filtro: " + filtro.getBestImage());
+		System.out.println("Archivos guardados ahora: " + savedFileNames);
+		for (String savedFileName : savedFileNames) {
+			Map<String, Object> photoInfo = new HashMap<>();
+			photoInfo.put("archivo", savedFileName);
+
+			if (filtro.isSuccess() && filtro.getBestImage() != null
+					&& filtro.getBestImage().equals(savedFileName)) {
+				photoInfo.put("calidad", "OPTIMA");
+				photoInfo.put("nitidez", filtro.getSharpnessScore());
+				photoInfo.put("mensaje", "Esta foto fue seleccionada como la mejor referencia");
+			} else if (filtro.isSuccess()) {
+				photoInfo.put("calidad", "ACEPTABLE");
+				photoInfo.put("mensaje", "Foto válida pero no es la de mayor calidad");
+			} else {
+				photoInfo.put("calidad", "RECHAZADA");
+				photoInfo.put("mensaje", filtro.getError());
+			}
+
+			qualityReport.add(photoInfo);
+		}
+
+		response.success();
+		response.getListMessage().add("Fotos registradas correctamente");
+		response.setPhotoQualityReport(qualityReport);
+
+		return response;
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/business/BusinessResidence.java
+========================================
+package com.epiis.projectcasaketteler.business;
+
+import java.net.InetAddress;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.epiis.projectcasaketteler.dto.request.RequestResidenceInsert;
+import com.epiis.projectcasaketteler.dto.request.RequestResidenceUpdate;
+import com.epiis.projectcasaketteler.dto.response.ResponseResidenceDeleteById;
+import com.epiis.projectcasaketteler.dto.response.ResponseResidenceGetById;
+import com.epiis.projectcasaketteler.dto.response.ResponseResidenceInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseResidenceUpdate;
+import com.epiis.projectcasaketteler.dto.response.ResponseResidenveGetAll;
+import com.epiis.projectcasaketteler.entity.EntityResidence;
+import com.epiis.projectcasaketteler.repository.RepositoryResidence;
+
+@Service
+public class BusinessResidence {
+	@Autowired
+	private RepositoryResidence repositoryResidence;
+
+	public ResponseResidenceInsert insert(RequestResidenceInsert request) throws Exception {
+		ResponseResidenceInsert response = new ResponseResidenceInsert();
+
+		EntityResidence entityResidence = new EntityResidence();
+
+		entityResidence.setIdResidence(UUID.randomUUID().toString());
+		entityResidence.setName(request.getName());
+		entityResidence.setIpAddress(InetAddress.getLocalHost().toString());
+		entityResidence.setCreated_at(new java.sql.Date(new Date().getTime()));
+		entityResidence.setUpdated_at(entityResidence.getCreated_at());
+		entityResidence.setWifiSsid(request.getWifiSsid());
+		entityResidence.setWifiBssid(request.getWifiBssid());
+
+		repositoryResidence.save(entityResidence);
+
+		response.success();
+		response.getListMessage().add("Residencia Registrada Correctamente");
+
+		return response;
+	}
+
+	public Map<String, Object> getAll() {
+		ResponseResidenveGetAll response = new ResponseResidenveGetAll();
+
+		Map<String, Object> res = new HashMap<>();
+
+		List<EntityResidence> entityResidence = repositoryResidence.findAll();
+
+		response.success();
+		response.getListMessage().add("Residencias Extraidas Correctamente");
+
+		res.put("message", response);
+		res.put("data", entityResidence);
+
+		return res;
+	}
+
+	public Map<String, Object> getById(String idResidence) {
+		ResponseResidenceGetById response = new ResponseResidenceGetById();
+
+		Map<String, Object> res = new HashMap<>();
+
+		Optional<EntityResidence> entityResidence = repositoryResidence.findById(idResidence);
+
+		response.success();
+		response.getListMessage().add("Residencia Extraida Correctamente");
+
+		res.put("message", response);
+		res.put("data", entityResidence);
+
+		return res;
+	}
+
+	public ResponseResidenceDeleteById deleteById(String idResidence) {
+		ResponseResidenceDeleteById response = new ResponseResidenceDeleteById();
+
+		repositoryResidence.deleteById(idResidence);
+
+		response.success();
+		response.getListMessage().add("Residencia Eliminada correctamente");
+
+		return response;
+	}
+
+	public ResponseResidenceUpdate update(String idResidence, RequestResidenceUpdate request) throws Exception {
+		ResponseResidenceUpdate response = new ResponseResidenceUpdate();
+
+		Optional<EntityResidence> optional = repositoryResidence.findById(idResidence);
+
+		if (optional.isPresent()) {
+			EntityResidence entityResidence = optional.get();
+
+			entityResidence.setName(request.getName());
+			entityResidence.setIpAddress(InetAddress.getLocalHost().toString());
+			entityResidence.setUpdated_at(new java.sql.Date(new Date().getTime()));
+			entityResidence.setWifiSsid(request.getWifiSsid());
+			entityResidence.setWifiBssid(request.getWifiBssid());
+
+			repositoryResidence.save(entityResidence);
+
+			response.success();
+			response.getListMessage().add("Residencia Actualizada Correctamente");
+
+			return response;
+		}
+		response.error();
+		response.getListMessage().add("Error la Residencia no se Actualizo");
+
+		return response;
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/business/BusinessUser.java
+========================================
+package com.epiis.projectcasaketteler.business;
+
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import com.epiis.projectcasaketteler.dto.request.RequestChangePassword;
+import com.epiis.projectcasaketteler.dto.request.RequestDeactivateUser;
+import com.epiis.projectcasaketteler.dto.request.RequestLogin;
+import com.epiis.projectcasaketteler.dto.request.RequestUserInsert;
+import com.epiis.projectcasaketteler.dto.request.RequestUserUpdate;
+import com.epiis.projectcasaketteler.dto.request.RequestUserUpdatePassword;
+import com.epiis.projectcasaketteler.dto.response.ResponseLogin;
+import com.epiis.projectcasaketteler.dto.response.ResponseUserDeleteById;
+import com.epiis.projectcasaketteler.dto.response.ResponseUserGetAll;
+import com.epiis.projectcasaketteler.dto.response.ResponseUserGetById;
+import com.epiis.projectcasaketteler.dto.response.ResponseUserInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseUserUpdate;
+import com.epiis.projectcasaketteler.dto.response.ResponseUserUpdatePassword;
+import com.epiis.projectcasaketteler.entity.EntityAdmin;
+import com.epiis.projectcasaketteler.entity.EntityResidence;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.entity.EntityUser.UserRole;
+import com.epiis.projectcasaketteler.helper.EmailHelper;
+import com.epiis.projectcasaketteler.helper.JwtHelper;
+import com.epiis.projectcasaketteler.helper.ObtainIpAddressHelper;
+import com.epiis.projectcasaketteler.helper.PasswordEncoderHelper;
+import com.epiis.projectcasaketteler.repository.RepositoryAdmin;
+import com.epiis.projectcasaketteler.repository.RepositoryUser;
+
+@Service
+public class BusinessUser {
+	@Autowired
+	private RepositoryUser repositoryUser;
+
+	@Autowired
+	private RepositoryAdmin repositoryAdmin;
+
+	@Autowired
+	private PasswordEncoderHelper passwordEncoderHelper;
+
+	@Autowired
+	private ObtainIpAddressHelper obtainIpAddressHelper;
+
+	@Autowired
+	private JwtHelper jwtHelper;
+
+	@Autowired
+	private EmailHelper emailHelper;
+
+	private BCryptPasswordEncoder passwordEncoder() {
+		return passwordEncoderHelper.passwordEncoder();
+	}
+
+	// LOGIN CORREGIDO
+	public ResponseLogin login(RequestLogin request) {
+		ResponseLogin response = new ResponseLogin();
+
+		try {
+			// PRIMERO: Buscar en ADMIN
+			Optional<EntityAdmin> adminOptional = repositoryAdmin.findByEmail(request.getEmail());
+
+			if (adminOptional.isPresent()) {
+				EntityAdmin admin = adminOptional.get();
+
+				// Verificar si está bloqueado
+				if (admin.getLockedUntil() != null && admin.getLockedUntil().after(new Date())) {
+					long minutosRestantes = (admin.getLockedUntil().getTime() - new Date().getTime()) / (1000 * 60);
+					response.setType("error");
+					response.getListMessage().add("Cuenta bloqueada. Intente en " + minutosRestantes + " minuto(s).");
+					return response;
+				}
+
+				if (admin.getActive() == null || !admin.getActive()) {
+					response.setType("error");
+					response.getListMessage().add("Usuario desactivado");
+					return response;
+				}
+
+				if (!passwordEncoder().matches(request.getPassword(), admin.getPassword())) {
+					int intentos = admin.getLoginAttempts() == null ? 0 : admin.getLoginAttempts();
+					intentos++;
+					admin.setLoginAttempts(intentos);
+
+					if (intentos >= 5) {
+						Date bloqueoHasta = new Date(new Date().getTime() + 15 * 60 * 1000);
+						admin.setLockedUntil(bloqueoHasta);
+						admin.setLoginAttempts(0);
+						repositoryAdmin.save(admin);
+						response.setType("error");
+						response.getListMessage().add("Cuenta bloqueada por 15 minutos tras 5 intentos fallidos.");
+						return response;
+					}
+
+					repositoryAdmin.save(admin);
+					response.setType("error");
+					response.getListMessage().add("Credenciales incorrectas. Intento " + intentos + " de 5.");
+					return response;
+				}
+
+				// Login exitoso — resetear intentos
+				admin.setLoginAttempts(0);
+				admin.setLockedUntil(null);
+				repositoryAdmin.save(admin);
+
+				String token = jwtHelper.generateToken(admin.getIdAdmin(), admin.getEmail(),
+						admin.getRole().toString());
+
+				response.setType("success");
+				response.setToken(token);
+				response.setUserId(admin.getIdAdmin());
+				response.setRole(admin.getRole().toString());
+				response.setFirstName(admin.getFirstName());
+				response.setSurName(admin.getSurName());
+				response.setFirstLogin(false);
+				response.getListMessage().add("Login exitoso");
+				return response;
+			}
+
+			// SEGUNDO: Buscar en USER
+			Optional<EntityUser> userOptional = repositoryUser.findByEmail(request.getEmail());
+
+			if (userOptional.isPresent()) {
+				EntityUser user = userOptional.get();
+
+				// Verificar si está bloqueado
+				if (user.getLockedUntil() != null && user.getLockedUntil().after(new Date())) {
+					long minutosRestantes = (user.getLockedUntil().getTime() - new Date().getTime()) / (1000 * 60);
+					response.setType("error");
+					response.getListMessage().add("Cuenta bloqueada. Intente en " + minutosRestantes + " minuto(s).");
+					return response;
+				}
+
+				if (user.getActive() == null || !user.getActive()) {
+					response.setType("error");
+					response.getListMessage().add("Usuario desactivado");
+					return response;
+				}
+
+				if (!passwordEncoder().matches(request.getPassword(), user.getPassword())) {
+					int intentos = user.getLoginAttempts() == null ? 0 : user.getLoginAttempts();
+					intentos++;
+					user.setLoginAttempts(intentos);
+
+					if (intentos >= 5) {
+						Date bloqueoHasta = new Date(new Date().getTime() + 15 * 60 * 1000);
+						user.setLockedUntil(bloqueoHasta);
+						user.setLoginAttempts(0);
+						repositoryUser.save(user);
+						response.setType("error");
+						response.getListMessage().add("Cuenta bloqueada por 15 minutos tras 5 intentos fallidos.");
+						return response;
+					}
+
+					repositoryUser.save(user);
+					response.setType("error");
+					response.getListMessage().add("Credenciales incorrectas. Intento " + intentos + " de 5.");
+					return response;
+				}
+
+				// Login exitoso — resetear intentos
+				user.setLoginAttempts(0);
+				user.setLockedUntil(null);
+				repositoryUser.save(user);
+
+				String token = jwtHelper.generateToken(user.getIdUser(), user.getEmail(),
+						user.getRole().toString());
+
+				response.setType("success");
+				response.setToken(token);
+				response.setUserId(user.getIdUser());
+				response.setRole(user.getRole().toString());
+				response.setFirstName(user.getFirstName());
+				response.setSurName(user.getSurName());
+				response.setFirstLogin(user.getFirstLogin());
+				response.getListMessage().add("Login exitoso");
+				return response;
+			}
+
+			// No encontrado en ninguna tabla
+			response.setType("error");
+			response.getListMessage().add("Credenciales incorrectas");
+			return response;
+
+		} catch (Exception e) {
+			response.setType("error");
+			response.getListMessage().add("Error en el login: " + e.getMessage());
+			return response;
+		}
+	}
+
+	// REGISTRO CORREGIDO
+	public ResponseUserInsert insert(RequestUserInsert request) {
+		ResponseUserInsert response = new ResponseUserInsert();
+
+		try {
+			if (repositoryUser.findByEmail(request.getEmail()).isPresent()) {
+				response.setType("error");
+				response.getListMessage().add("El email ya está registrado");
+				return response;
+			}
+
+			String temporalPassword = generateTemporalPassword();
+
+			EntityUser entityUser = new EntityUser();
+			EntityResidence entityResidence = new EntityResidence();
+			entityResidence.setIdResidence(request.getIdResidence());
+
+			entityUser.setIdUser(UUID.randomUUID().toString());
+			entityUser.setParentResidence(entityResidence);
+			entityUser.setFirstName(request.getFirstName());
+			entityUser.setSurName(request.getSurName());
+			entityUser.setEmail(request.getEmail());
+			entityUser.setPassword(passwordEncoder().encode(temporalPassword));
+
+			// Convertir int a String
+			entityUser.setCellPhoneNumber(String.valueOf(request.getCellPhoneNumber()));
+			entityUser.setCellPhoneEmergency(String.valueOf(request.getCellPhoneEmergency()));
+
+			entityUser.setIpAddressLocal(obtainIpAddressHelper.getIp()); // USAR setIpAddressLocal
+			entityUser.setRole(UserRole.RESIDENTE);
+			entityUser.setActive(true);
+			entityUser.setFirstLogin(true);
+			entityUser.setTemporalPassword(temporalPassword);
+
+			repositoryUser.save(entityUser);
+			response.setTemporalPassword(temporalPassword);
+
+			try {
+				emailHelper.sendTemporaryCredentials(request.getEmail(), request.getEmail(), temporalPassword);
+			} catch (Exception e) {
+				System.err.println("Error al enviar email: " + e.getMessage());
+			}
+
+			response.setType("success");
+			response.getListMessage().add("Usuario registrado exitosamente. Se enviaron las credenciales a su email.");
+
+			return response;
+
+		} catch (Exception e) {
+			response.setType("error");
+			response.getListMessage().add("Error al registrar usuario: " + e.getMessage());
+			return response;
+		}
+	}
+
+	public ResponseUserInsert resetPassword(String idUser) {
+		ResponseUserInsert response = new ResponseUserInsert();
+
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+
+		if (!optional.isPresent()) {
+			response.setType("error");
+			response.getListMessage().add("Usuario no encontrado");
+			return response;
+		}
+
+		EntityUser user = optional.get();
+		String nuevaTemporalPassword = generateTemporalPassword();
+
+		user.setPassword(passwordEncoder().encode(nuevaTemporalPassword));
+		user.setFirstLogin(true);
+		user.setTemporalPassword(nuevaTemporalPassword);
+
+		repositoryUser.save(user);
+
+		try {
+			emailHelper.sendTemporaryCredentials(
+					user.getEmail(),
+					user.getEmail(),
+					nuevaTemporalPassword);
+		} catch (Exception e) {
+			System.err.println("Error enviando email: " + e.getMessage());
+		}
+
+		response.setType("success");
+		response.setTemporalPassword(nuevaTemporalPassword);
+		response.getListMessage().add("Contraseña restablecida y enviada por email");
+
+		return response;
+	}
+
+	// CAMBIAR CONTRASEÑA
+	public ResponseUserUpdatePassword changePassword(String userId, RequestChangePassword request) {
+		ResponseUserUpdatePassword response = new ResponseUserUpdatePassword();
+
+		Optional<EntityUser> optional = repositoryUser.findById(userId);
+
+		if (!optional.isPresent()) {
+			response.setType("error");
+			response.getListMessage().add("Usuario no encontrado");
+			return response;
+		}
+
+		EntityUser user = optional.get();
+
+		if (!passwordEncoder().matches(request.getOldPassword(), user.getPassword())) {
+			response.setType("error");
+			response.getListMessage().add("Contraseña actual incorrecta");
+			return response;
+		}
+
+		user.setPassword(passwordEncoder().encode(request.getNewPassword()));
+		user.setFirstLogin(false);
+		user.setTemporalPassword(null);
+		repositoryUser.save(user);
+
+		response.setType("success");
+		response.getListMessage().add("Contraseña actualizada exitosamente");
+
+		return response;
+	}
+
+	// DESACTIVAR USUARIO
+	public ResponseUserUpdate deactivateUser(String userId, RequestDeactivateUser request) {
+		ResponseUserUpdate response = new ResponseUserUpdate();
+
+		Optional<EntityUser> optional = repositoryUser.findById(userId);
+
+		if (optional.isPresent()) {
+			EntityUser user = optional.get();
+			user.setActive(request.getActive());
+			repositoryUser.save(user);
+
+			response.setType("success");
+			response.getListMessage().add(request.getActive() ? "Usuario activado" : "Usuario desactivado");
+			return response;
+		}
+
+		response.setType("error");
+		response.getListMessage().add("Usuario no encontrado");
+		return response;
+	}
+
+	// OBTENER PERFIL PROPIO
+	public Map<String, Object> getMyProfile(String userId) {
+		Map<String, Object> res = new HashMap<>();
+		ResponseUserGetById response = new ResponseUserGetById();
+
+		Optional<EntityUser> entityUser = repositoryUser.findById(userId);
+
+		if (entityUser.isPresent()) {
+			response.setType("success");
+			response.getListMessage().add("Perfil obtenido correctamente");
+			res.put("message", response);
+			res.put("data", entityUser.get());
+		} else {
+			response.setType("error");
+			response.getListMessage().add("Usuario no encontrado");
+			res.put("message", response);
+			res.put("data", null);
+		}
+
+		return res;
+	}
+
+	// ACTUALIZAR PERFIL PROPIO
+	public ResponseUserUpdate updateMyProfile(String userId, RequestUserUpdate request) {
+		ResponseUserUpdate response = new ResponseUserUpdate();
+
+		Optional<EntityUser> optional = repositoryUser.findById(userId);
+
+		if (optional.isPresent()) {
+			EntityUser entityUser = optional.get();
+
+			entityUser.setFirstName(request.getFirstName());
+			entityUser.setSurName(request.getSurName());
+			entityUser.setCellPhoneNumber(String.valueOf(request.getCellPhoneNumber()));
+			entityUser.setCellPhoneEmergency(String.valueOf(request.getCellPhoneEmergency()));
+
+			repositoryUser.save(entityUser);
+
+			response.setType("success");
+			response.getListMessage().add("Perfil actualizado correctamente");
+			return response;
+		}
+
+		response.setType("error");
+		response.getListMessage().add("Usuario no encontrado");
+		return response;
+	}
+
+	// MÉTODOS EXISTENTES
+	public Map<String, Object> getAll() {
+		ResponseUserGetAll response = new ResponseUserGetAll();
+		Map<String, Object> res = new HashMap<>();
+		List<EntityUser> entityUser = repositoryUser.findAll();
+
+		response.setType("success");
+		response.getListMessage().add("Usuarios extraídos correctamente");
+
+		res.put("message", response);
+		res.put("data", entityUser);
+
+		return res;
+	}
+
+	public Map<String, Object> getById(String idUser) {
+		ResponseUserGetById response = new ResponseUserGetById();
+		Map<String, Object> res = new HashMap<>();
+		Optional<EntityUser> entityUser = repositoryUser.findById(idUser);
+
+		response.setType("success");
+		response.getListMessage().add("Usuario extraído correctamente");
+
+		res.put("message", response);
+		res.put("data", entityUser);
+
+		return res;
+	}
+
+	public ResponseUserDeleteById deleteById(String idUser) {
+		ResponseUserDeleteById response = new ResponseUserDeleteById();
+		repositoryUser.deleteById(idUser);
+
+		response.setType("success");
+		response.getListMessage().add("Usuario eliminado correctamente");
+
+		return response;
+	}
+
+	// MÉTODO update EXISTENTE (renombrado para no confundir)
+	public ResponseUserUpdate updateUser(String idUser, RequestUserUpdate request) {
+		ResponseUserUpdate response = new ResponseUserUpdate();
+
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+
+		if (optional.isPresent()) {
+			EntityUser entityUser = optional.get();
+
+			EntityResidence entityResidence = new EntityResidence();
+			entityResidence.setIdResidence(request.getIdResidence());
+
+			entityUser.setParentResidence(entityResidence);
+			entityUser.setFirstName(request.getFirstName());
+			entityUser.setSurName(request.getSurName());
+			entityUser.setEmail(request.getEmail());
+			entityUser.setCellPhoneNumber(String.valueOf(request.getCellPhoneNumber()));
+			entityUser.setCellPhoneEmergency(String.valueOf(request.getCellPhoneEmergency()));
+			entityUser.setIpAddressLocal(obtainIpAddressHelper.getIp());
+
+			repositoryUser.save(entityUser);
+
+			response.setType("success");
+			response.getListMessage().add("Usuario actualizado correctamente");
+
+			return response;
+		}
+
+		response.setType("error");
+		response.getListMessage().add("Error el Usuario no se Actualizo");
+
+		return response;
+	}
+
+	// MÉTODO updatePassword EXISTENTE
+	public ResponseUserUpdatePassword updatePasswordUser(String email, RequestUserUpdatePassword request) {
+		ResponseUserUpdatePassword response = new ResponseUserUpdatePassword();
+
+		Optional<EntityUser> optional = repositoryUser.findByEmail(email);
+
+		if (optional.isPresent()) {
+			EntityUser entityUser = optional.get();
+
+			entityUser.setPassword(passwordEncoder().encode(request.getPassword()));
+
+			repositoryUser.save(entityUser);
+
+			response.setType("success");
+			response.getListMessage().add("Contraseña actualizada correctamente");
+			return response;
+		}
+
+		response.setType("error");
+		response.getListMessage().add("Error la Contraseña no se actualizo");
+
+		return response;
+	}
+
+	private String generateTemporalPassword() {
+		String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$";
+		StringBuilder password = new StringBuilder();
+		for (int i = 0; i < 10; i++) {
+			int index = (int) (Math.random() * chars.length());
+			password.append(chars.charAt(index));
+		}
+		return password.toString();
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/config/CorsConfig.java
+========================================
+package com.epiis.projectcasaketteler.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+@Configuration
+public class CorsConfig {
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+
+        config.addAllowedOriginPattern("*"); 
+        
+        config.addAllowedMethod("*");
+        
+        config.addAllowedHeader("*");
+        
+        config.setAllowCredentials(false);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+
+        return source;
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/config/GlobalExceptionHandler.java
+========================================
+package com.epiis.projectcasaketteler.config;
+
+import java.util.HashMap;
+import java.util.Map;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleMaxUploadSize(
+            MaxUploadSizeExceededException e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("type", "error");
+        response.put("listMessage",
+                java.util.List.of("Error: El archivo supera el límite de 10 MB"));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/config/JwtRequestFilter.java
+========================================
+package com.epiis.projectcasaketteler.config;
+
+import java.io.IOException;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.epiis.projectcasaketteler.helper.JwtHelper;
+import com.epiis.projectcasaketteler.service.CustomUserDetailsService;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+@Component
+public class JwtRequestFilter extends OncePerRequestFilter {
+
+    @Autowired
+    private CustomUserDetailsService userDetailsService;
+
+    @Autowired
+    private JwtHelper jwtHelper;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+            throws ServletException, IOException {
+
+        final String authorizationHeader = request.getHeader("Authorization");
+
+        String email = null;
+        String jwt = null;
+
+        if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
+            jwt = authorizationHeader.substring(7);
+            email = jwtHelper.extractEmail(jwt);
+        }
+
+        if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            UserDetails userDetails = this.userDetailsService.loadUserByUsername(email);
+
+            if (jwtHelper.validateToken(jwt, email)) {
+                UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = new UsernamePasswordAuthenticationToken(
+                        userDetails, null, userDetails.getAuthorities());
+                usernamePasswordAuthenticationToken
+                        .setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(usernamePasswordAuthenticationToken);
+            }
+        }
+        chain.doFilter(request, response);
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/config/SecurityConfig.java
+========================================
+package com.epiis.projectcasaketteler.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+	private final CorsConfigurationSource corsConfigurationSource;
+	private final JwtRequestFilter jwtRequestFilter;
+
+	public SecurityConfig(CorsConfigurationSource corsConfigurationSource, JwtRequestFilter jwtRequestFilter) {
+		this.corsConfigurationSource = corsConfigurationSource;
+		this.jwtRequestFilter = jwtRequestFilter;
+	}
+
+	@Bean
+	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+		http
+				.cors(cors -> cors.configurationSource(corsConfigurationSource))
+				.csrf(csrf -> csrf.disable())
+				.authorizeHttpRequests(auth -> auth
+						// ============================================
+						// ENDPOINTS PÚBLICOS (no requieren autenticación)
+						// ============================================
+						.requestMatchers(
+								"/casaketteler/login",
+								"/casaketteler/registeruser",
+								"/casaketteler/registeradmin",
+								"/casaketteler/registerresidence",
+								"/casaketteler/indexresidence",
+								"/casaketteler/showresidence/**",
+								"/casaketteler/network/**",
+								"/casaketteler/verify"
+
+						).permitAll()
+
+						// ============================================
+						// ENDPOINTS QUE SOLO SUPER_ADMIN
+						// ============================================
+						.requestMatchers("/casaketteler/deleteadmin/**").hasAuthority("SUPER_ADMIN")
+
+						// ============================================
+						// ENDPOINTS QUE SOLO ADMIN o SUPER_ADMIN
+						// ============================================
+						.requestMatchers(
+								"/casaketteler/indexadmin",
+								"/casaketteler/deactivateuser/**",
+								"/casaketteler/deleteuser/**",
+								"/casaketteler/updateuser/**",
+								"/casaketteler/resetpassword/**",
+								"/casaketteler/registerphoto",
+								"/casaketteler/documents/**", // listar y descargar documentos
+								"/casaketteler/resignation/**", // gestión renuncia admin
+								"/casaketteler/registerdocumentgeneral",
+								"/casaketteler/registerdocumententer",
+								"/casaketteler/attendance/filter",
+								"/casaketteler/attendance/export",
+								"/casaketteler/attendance/kpi")
+						.hasAnyAuthority("SUPER_ADMIN", "ADMIN")
+						// ============================================
+						// RESTO requieren autenticación (cualquier rol)
+						// ============================================
+						.anyRequest().authenticated())
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+
+		return http.build();
+	}
+
+	@Bean
+	public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration)
+			throws Exception {
+		return authenticationConfiguration.getAuthenticationManager();
+	}
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/controller/AdminController.java
+========================================
+package com.epiis.projectcasaketteler.controller;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.epiis.projectcasaketteler.business.BusinessAdmin;
+import com.epiis.projectcasaketteler.dto.request.RequestAdminInsert;
+import com.epiis.projectcasaketteler.dto.request.RequestAdminUpdate;
+import com.epiis.projectcasaketteler.dto.request.RequestAdminUpdatePassword;
+import com.epiis.projectcasaketteler.dto.response.ResponseAdminDeleteById;
+import com.epiis.projectcasaketteler.dto.response.ResponseAdminInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseAdminUpdate;
+import com.epiis.projectcasaketteler.dto.response.ResponseAdminUpdatePassword;
+
+@RestController
+@RequestMapping(path = "casaketteler")
+public class AdminController {
+	@Autowired
+	private BusinessAdmin businessAdmin;
+
+	@PostMapping(path = "registeradmin", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<ResponseAdminInsert> insert(@RequestBody RequestAdminInsert request) {
+		ResponseAdminInsert response = businessAdmin.insert(request);
+
+		return ResponseEntity.ok(response);
+	}
+
+	@GetMapping(path = "indexadmin")
+	public ResponseEntity<Map<String, Object>> getAll() {
+
+		return ResponseEntity.ok(businessAdmin.getAll());
+	}
+
+	@GetMapping(path = "showadmin/{idAdmin}")
+	public ResponseEntity<Map<String, Object>> getById(@PathVariable String idAdmin) {
+
+		return ResponseEntity.ok(businessAdmin.getById(idAdmin));
+	}
+
+	@DeleteMapping(path = "deleteadmin/{idAdmin}")
+	public ResponseEntity<ResponseAdminDeleteById> deleteById(@PathVariable String idAdmin) {
+		ResponseAdminDeleteById response = businessAdmin.deleteById(idAdmin);
+
+		return ResponseEntity.ok(response);
+	}
+
+	@PutMapping(path = "updateadmin/{idAdmin}", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<ResponseAdminUpdate> update(@PathVariable String idAdmin,
+			@RequestBody RequestAdminUpdate request) {
+		ResponseAdminUpdate response = businessAdmin.update(idAdmin, request);
+
+		return ResponseEntity.ok(response);
+	}
+
+	@PutMapping(path = "updatepasswordadmin/{email}")
+	public ResponseEntity<ResponseAdminUpdatePassword> updatePassword(@PathVariable String email,
+			@RequestBody RequestAdminUpdatePassword request) {
+		ResponseAdminUpdatePassword response = businessAdmin.updatePassword(email, request);
+
+		return ResponseEntity.ok(response);
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/controller/AttendanceController.java
+========================================
+package com.epiis.projectcasaketteler.controller;
+
+import java.util.Map;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.epiis.projectcasaketteler.business.BusinessAttendance;
+import com.epiis.projectcasaketteler.business.BusinessAttendanceExport;
+import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
+import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
+import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
+import com.epiis.projectcasaketteler.dto.response.ResponseSyncResult;
+import com.epiis.projectcasaketteler.helper.JwtHelper;
+
+@RestController
+@RequestMapping(path = "casaketteler")
+public class AttendanceController {
+    @Autowired
+    private BusinessAttendance businessAttendance;
+
+    @Autowired
+    private JwtHelper jwtHelper;
+
+    @Autowired
+    private BusinessAttendanceExport businessAttendanceExport;
+
+    @PostMapping(path = "register", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ResponseFaceVerification> registerAttendance(
+            @ModelAttribute RequestAttendanceInsert request) {
+        ResponseFaceVerification response = businessAttendance.insert(request);
+
+        boolean hasError = response.getListMessage().stream().anyMatch(msg -> msg.startsWith("Error"));
+
+        if (hasError) {
+            return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping(path = "myattendance")
+    public ResponseEntity<Map<String, Object>> getMyAttendance(
+            @RequestHeader("Authorization") String token) {
+        String userId = jwtHelper.extractUserId(token.substring(7));
+        return ResponseEntity.ok(businessAttendance.getByUser(userId));
+    }
+
+    @PostMapping(path = "attendance/sync", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ResponseSyncResult> sync(
+            @RequestHeader("Authorization") String token,
+            @RequestBody List<RequestAttendanceSync> records) {
+        String userId = jwtHelper.extractUserId(token.substring(7));
+        ResponseSyncResult result = businessAttendance.syncOfflineRecords(userId, records);
+        return ResponseEntity.ok(result);
+    }
+
+    // Residente: su propia asistencia con filtros
+    @GetMapping(path = "myattendance/filter")
+    public ResponseEntity<Map<String, Object>> getByFilters(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(required = false) String fechaInicio,
+            @RequestParam(required = false) String fechaFin,
+            @RequestParam(required = false) Boolean estado,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        String userId = jwtHelper.extractUserId(token.substring(7));
+        return ResponseEntity.ok(businessAttendance.getByFilters(
+                userId, fechaInicio, fechaFin, estado, page, size));
+    }
+
+    // Admin: asistencia de cualquier residente con filtros
+    @GetMapping(path = "attendance/filter")
+    public ResponseEntity<Map<String, Object>> getByFiltersAdmin(
+            @RequestHeader("Authorization") String token,
+            @RequestParam(required = false) String idUser,
+            @RequestParam(required = false) String fechaInicio,
+            @RequestParam(required = false) String fechaFin,
+            @RequestParam(required = false) Boolean estado,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(businessAttendance.getByFiltersAdmin(
+                idUser, fechaInicio, fechaFin, estado, page, size));
+    }
+
+    @GetMapping(path = "attendance/export")
+    public ResponseEntity<byte[]> exportar(
+            @RequestParam String format,
+            @RequestParam(required = false) String idUser,
+            @RequestParam(required = false) String fechaInicio,
+            @RequestParam(required = false) String fechaFin,
+            @RequestParam(required = false) Boolean estado) throws Exception {
+
+        if ("excel".equalsIgnoreCase(format)) {
+            byte[] data = businessAttendanceExport.exportarExcel(idUser, fechaInicio, fechaFin, estado);
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"asistencias.xlsx\"")
+                    .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .body(data);
+        } else if ("pdf".equalsIgnoreCase(format)) {
+            byte[] data = businessAttendanceExport.exportarPDF(idUser, fechaInicio, fechaFin, estado);
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"asistencias.pdf\"")
+                    .header("Content-Type", "application/pdf")
+                    .body(data);
+        }
+
+        return ResponseEntity.badRequest().build();
+    }
+
+    @GetMapping(path = "attendance/kpi")
+    public ResponseEntity<Map<String, Object>> getResumenKPI(
+            @RequestParam(required = false) String idResidence) {
+        return ResponseEntity.ok(businessAttendance.getResumenKPI(idResidence));
+    }
+
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/controller/DocumentEnterController.java
+========================================
+package com.epiis.projectcasaketteler.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.epiis.projectcasaketteler.business.BusinessDocumentEnter;
+import com.epiis.projectcasaketteler.dto.request.RequestDocumentEnterInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseDocumentEnterInsert;
+
+@RestController
+@RequestMapping(path = "casaketteler")
+public class DocumentEnterController {
+	@Autowired
+	private BusinessDocumentEnter businessDocumentEnter;
+
+	@PostMapping(path = "registerdocumententer", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public ResponseEntity<ResponseDocumentEnterInsert> insert(@ModelAttribute RequestDocumentEnterInsert request)
+			throws Exception {
+		ResponseDocumentEnterInsert response = businessDocumentEnter.insert(request);
+
+		return ResponseEntity.ok(response);
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/controller/DocumentGeneralController.java
+========================================
+package com.epiis.projectcasaketteler.controller;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.epiis.projectcasaketteler.business.BusinessDocumentGeneral;
+import com.epiis.projectcasaketteler.dto.request.RequestDocumentGeneralInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseDocumentGeneralInsert;
+import com.epiis.projectcasaketteler.helper.JwtHelper;
+
+@RestController
+@RequestMapping(path = "casaketteler")
+public class DocumentGeneralController {
+	@Autowired
+	private BusinessDocumentGeneral businessDocumentGeneral;
+
+	@Autowired
+	private JwtHelper jwtHelper;
+
+	@PostMapping(path = "registerdocumentgeneral", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public ResponseEntity<ResponseDocumentGeneralInsert> insert(@ModelAttribute RequestDocumentGeneralInsert request)
+			throws Exception {
+		ResponseDocumentGeneralInsert response = businessDocumentGeneral.insert(request);
+
+		return ResponseEntity.ok(response);
+	}
+
+	// Admin lista documentos de un residente, con filtro opcional por tipo
+	@GetMapping(path = "documents/{idUser}")
+	public ResponseEntity<Map<String, Object>> getByUser(
+			@PathVariable String idUser,
+			@RequestParam(required = false) String type) {
+		return ResponseEntity.ok(businessDocumentGeneral.getByUser(idUser, type));
+	}
+
+	// Residente ve sus documentos descargables
+	@GetMapping(path = "mydocuments")
+	public ResponseEntity<Map<String, Object>> getMyDocuments(
+			@RequestHeader("Authorization") String token) {
+		String userId = jwtHelper.extractUserId(token.substring(7));
+		return ResponseEntity.ok(businessDocumentGeneral.getMyDownloadableDocuments(userId));
+	}
+
+	// Admin actualiza estado y observaciones
+	@PatchMapping(path = "documents/{idDocument}/status")
+	public ResponseEntity<ResponseDocumentGeneralInsert> updateStatus(
+			@PathVariable String idDocument,
+			@RequestParam String status,
+			@RequestParam(required = false) String observations) {
+		return ResponseEntity.ok(
+				businessDocumentGeneral.updateStatus(idDocument, status, observations));
+	}
+
+	@GetMapping(path = "documents/download/{idDocument}")
+	public ResponseEntity<org.springframework.core.io.Resource> download(
+			@PathVariable String idDocument) throws Exception {
+		org.springframework.core.io.Resource resource = businessDocumentGeneral.download(idDocument);
+		return ResponseEntity.ok()
+				.header("Content-Disposition",
+						"attachment; filename=\"" + resource.getFilename() + "\"")
+				.body(resource);
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/controller/DocumentResignationController.java
+========================================
+package com.epiis.projectcasaketteler.controller;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.epiis.projectcasaketteler.business.BusinessDocumentResignation;
+import com.epiis.projectcasaketteler.dto.request.RequestDocumentResignationInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseDocumentResignationInsert;
+import com.epiis.projectcasaketteler.helper.JwtHelper;
+
+@RestController
+@RequestMapping(path = "casaketteler")
+public class DocumentResignationController {
+	@Autowired
+	private BusinessDocumentResignation businessDocumentResignation;
+
+	@Autowired
+	private JwtHelper jwtHelper;
+
+	@PostMapping(path = "registerdocumentresignation")
+	public ResponseEntity<ResponseDocumentResignationInsert> insert(
+			@ModelAttribute RequestDocumentResignationInsert request) throws Exception {
+		ResponseDocumentResignationInsert response = businessDocumentResignation.insert(request);
+
+		return ResponseEntity.ok(response);
+	}
+
+	// Admin lista renuncias de un residente
+	@GetMapping(path = "resignation/{idUser}")
+	public ResponseEntity<Map<String, Object>> getByUser(@PathVariable String idUser) {
+		return ResponseEntity.ok(businessDocumentResignation.getByUser(idUser));
+	}
+
+	// Residente ve su propia renuncia
+	@GetMapping(path = "myresignation")
+	public ResponseEntity<Map<String, Object>> getMyResignation(
+			@RequestHeader("Authorization") String token) {
+		String userId = jwtHelper.extractUserId(token.substring(7));
+		return ResponseEntity.ok(businessDocumentResignation.getMyResignation(userId));
+	}
+
+	// Admin actualiza estado y observaciones
+	@PatchMapping(path = "resignation/{idDocument}/status")
+	public ResponseEntity<ResponseDocumentResignationInsert> updateStatus(
+			@PathVariable String idDocument,
+			@RequestParam String status,
+			@RequestParam(required = false) String observations) {
+		return ResponseEntity.ok(
+				businessDocumentResignation.updateStatus(idDocument, status, observations));
+	}
+
+	@GetMapping(path = "resignation/download/{idDocument}")
+	public ResponseEntity<org.springframework.core.io.Resource> download(
+			@PathVariable String idDocument) throws Exception {
+		org.springframework.core.io.Resource resource = businessDocumentResignation.download(idDocument);
+		return ResponseEntity.ok()
+				.header("Content-Disposition",
+						"attachment; filename=\"" + resource.getFilename() + "\"")
+				.body(resource);
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/controller/NetworkController.java
+========================================
+package com.epiis.projectcasaketteler.controller;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.epiis.projectcasaketteler.entity.EntityResidence;
+import com.epiis.projectcasaketteler.repository.RepositoryResidence;
+
+@RestController
+@RequestMapping(path = "casaketteler")
+public class NetworkController {
+
+    @Autowired
+    private RepositoryResidence repositoryResidence;
+
+    // Este endpoint devuelve la configuración de red esperada
+    // El frontend debe comparar con el SSID real del dispositivo
+    @GetMapping(path = "network/config")
+    public ResponseEntity<Map<String, Object>> getNetworkConfig() {
+        Map<String, Object> response = new HashMap<>();
+        Map<String, String> data = new HashMap<>();
+
+        // Estos valores deben configurarse por administrador
+        data.put("expectedSSID", "CasaKetteler_WiFi"); // SSID esperado
+        data.put("networkType", "WIFI");
+
+        response.put("success", true);
+        response.put("data", data);
+        response.put("message", "Configuración de red obtenida");
+
+        return ResponseEntity.ok(response);
+    }
+
+    // Endpoint para verificar si el SSID proporcionado es válido
+    @GetMapping(path = "network/verify")
+    public ResponseEntity<Map<String, Object>> verifyNetwork(
+            @RequestParam String ssid,
+            @RequestParam String idResidence) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        Optional<EntityResidence> optional = repositoryResidence.findById(idResidence);
+
+        if (!optional.isPresent()) {
+            response.put("success", false);
+            response.put("isValid", false);
+            response.put("message", "Residencia no encontrada");
+            return ResponseEntity.ok(response);
+        }
+
+        String expectedSSID = optional.get().getWifiSsid();
+        boolean isValid = expectedSSID != null && expectedSSID.equals(ssid);
+
+        response.put("success", true);
+        response.put("isValid", isValid);
+        response.put("message", isValid ? "Red correcta" : "Conéctese a la red oficial de Casa Ketteler");
+
+        return ResponseEntity.ok(response);
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/controller/PhotoController.java
+========================================
+package com.epiis.projectcasaketteler.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.epiis.projectcasaketteler.business.BusinessPhoto;
+import com.epiis.projectcasaketteler.dto.request.RequestPhotoInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponsePhotoInsert;
+
+@RestController
+@RequestMapping(path = "casaketteler")
+public class PhotoController {
+	@Autowired
+	private BusinessPhoto businessPhoto;
+
+	@PostMapping(path = "registerphoto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public ResponseEntity<ResponsePhotoInsert> insert(@ModelAttribute RequestPhotoInsert request) throws Exception {
+		ResponsePhotoInsert response = businessPhoto.insert(request);
+
+		return ResponseEntity.ok(response);
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/controller/ResidenceController.java
+========================================
+package com.epiis.projectcasaketteler.controller;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.epiis.projectcasaketteler.business.BusinessResidence;
+import com.epiis.projectcasaketteler.dto.request.RequestResidenceInsert;
+import com.epiis.projectcasaketteler.dto.request.RequestResidenceUpdate;
+import com.epiis.projectcasaketteler.dto.response.ResponseResidenceDeleteById;
+import com.epiis.projectcasaketteler.dto.response.ResponseResidenceInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseResidenceUpdate;
+
+@RestController
+@RequestMapping(path = "casaketteler")
+public class ResidenceController {
+	@Autowired
+	private BusinessResidence businessResidence;
+
+	@PostMapping(path = "registerresidence", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<ResponseResidenceInsert> insert(@RequestBody RequestResidenceInsert request)
+			throws Exception {
+		ResponseResidenceInsert response = businessResidence.insert(request);
+
+		return ResponseEntity.ok(response);
+	}
+
+	@GetMapping(path = "indexresidence")
+	public ResponseEntity<Map<String, Object>> getAll() {
+
+		return ResponseEntity.ok(businessResidence.getAll());
+	}
+
+	@GetMapping(path = "showresidence/{idResidence}")
+	public ResponseEntity<Map<String, Object>> getById(@PathVariable String idResidence) {
+
+		return ResponseEntity.ok(businessResidence.getById(idResidence));
+	}
+
+	@DeleteMapping(path = "deleteresidence/{idResidence}")
+	public ResponseEntity<ResponseResidenceDeleteById> deleteById(@PathVariable String idResidence) {
+		ResponseResidenceDeleteById response = businessResidence.deleteById(idResidence);
+
+		return ResponseEntity.ok(response);
+	}
+
+	@PutMapping(path = "updateresidence/{idResidence}", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<ResponseResidenceUpdate> update(@PathVariable String idResidence,
+			@RequestBody RequestResidenceUpdate request) throws Exception {
+		ResponseResidenceUpdate response = businessResidence.update(idResidence, request);
+
+		return ResponseEntity.ok(response);
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/controller/UserController.java
+========================================
+package com.epiis.projectcasaketteler.controller;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.epiis.projectcasaketteler.business.BusinessUser;
+import com.epiis.projectcasaketteler.dto.request.RequestChangePassword;
+import com.epiis.projectcasaketteler.dto.request.RequestDeactivateUser;
+import com.epiis.projectcasaketteler.dto.request.RequestLogin;
+import com.epiis.projectcasaketteler.dto.request.RequestUserInsert;
+import com.epiis.projectcasaketteler.dto.request.RequestUserUpdate;
+import com.epiis.projectcasaketteler.dto.request.RequestUserUpdatePassword;
+import com.epiis.projectcasaketteler.dto.response.ResponseLogin;
+import com.epiis.projectcasaketteler.dto.response.ResponseUserDeleteById;
+import com.epiis.projectcasaketteler.dto.response.ResponseUserInsert;
+import com.epiis.projectcasaketteler.dto.response.ResponseUserUpdate;
+import com.epiis.projectcasaketteler.dto.response.ResponseUserUpdatePassword;
+import com.epiis.projectcasaketteler.helper.JwtHelper;
+
+@RestController
+@RequestMapping(path = "casaketteler")
+public class UserController {
+	@Autowired
+	private BusinessUser businessUser;
+
+	@Autowired
+	private JwtHelper jwtHelper; // AGREGAR ESTO
+
+	@PostMapping(path = "registeruser", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<ResponseUserInsert> insert(@RequestBody RequestUserInsert request) {
+		ResponseUserInsert response = businessUser.insert(request);
+		return ResponseEntity.ok(response);
+	}
+
+	@PostMapping(path = "login", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<ResponseLogin> login(@RequestBody RequestLogin request) {
+		ResponseLogin response = businessUser.login(request);
+		return ResponseEntity.ok(response);
+	}
+
+	@GetMapping(path = "myprofile")
+	public ResponseEntity<Map<String, Object>> getMyProfile(@RequestHeader("Authorization") String token) {
+		String userId = extractUserIdFromToken(token);
+		return ResponseEntity.ok(businessUser.getMyProfile(userId));
+	}
+
+	@PutMapping(path = "myprofile", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<ResponseUserUpdate> updateMyProfile(
+			@RequestHeader("Authorization") String token,
+			@RequestBody RequestUserUpdate request) {
+		String userId = extractUserIdFromToken(token);
+		ResponseUserUpdate response = businessUser.updateMyProfile(userId, request);
+		return ResponseEntity.ok(response);
+	}
+
+	@PutMapping(path = "changepassword", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<ResponseUserUpdatePassword> changePassword(
+			@RequestHeader("Authorization") String token,
+			@RequestBody RequestChangePassword request) {
+		String userId = extractUserIdFromToken(token);
+		ResponseUserUpdatePassword response = businessUser.changePassword(userId, request);
+		return ResponseEntity.ok(response);
+	}
+
+	@PatchMapping(path = "deactivateuser/{idUser}", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<ResponseUserUpdate> deactivateUser(
+			@PathVariable String idUser,
+			@RequestBody RequestDeactivateUser request) {
+		ResponseUserUpdate response = businessUser.deactivateUser(idUser, request);
+		return ResponseEntity.ok(response);
+	}
+
+	@GetMapping(path = "indexuser")
+	public ResponseEntity<Map<String, Object>> getAll() {
+		return ResponseEntity.ok(businessUser.getAll());
+	}
+
+	@GetMapping(path = "showuser/{idUser}")
+	public ResponseEntity<Map<String, Object>> getById(@PathVariable String idUser) {
+		return ResponseEntity.ok(businessUser.getById(idUser));
+	}
+
+	@DeleteMapping(path = "deleteuser/{idUser}")
+	public ResponseEntity<ResponseUserDeleteById> deleteById(@PathVariable String idUser) {
+		ResponseUserDeleteById response = businessUser.deleteById(idUser);
+		return ResponseEntity.ok(response);
+	}
+
+	@PutMapping(path = "updateuser/{idUser}", consumes = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<ResponseUserUpdate> updateUser(@PathVariable String idUser,
+			@RequestBody RequestUserUpdate request) {
+		ResponseUserUpdate response = businessUser.updateUser(idUser, request);
+		return ResponseEntity.ok(response);
+	}
+
+	@PutMapping(path = "updatepassworduser/{email}")
+	public ResponseEntity<ResponseUserUpdatePassword> updatePasswordUser(@PathVariable String email,
+			@RequestBody RequestUserUpdatePassword request) {
+		ResponseUserUpdatePassword response = businessUser.updatePasswordUser(email, request);
+		return ResponseEntity.ok(response);
+	}
+
+	private String extractUserIdFromToken(String authHeader) {
+		if (authHeader != null && authHeader.startsWith("Bearer ")) {
+			String token = authHeader.substring(7);
+			return jwtHelper.extractUserId(token);
+		}
+		return null;
+	}
+
+	@PostMapping(path = "resetpassword/{idUser}")
+	public ResponseEntity<ResponseUserInsert> resetPassword(@PathVariable String idUser) {
+		ResponseUserInsert response = businessUser.resetPassword(idUser);
+		return ResponseEntity.ok(response);
+	}
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestAdminInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestAdminInsert {
+	private String idResidence;
+	private String firstName;
+	private String surName;
+	private String email;
+	private String password;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestAdminUpdate.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestAdminUpdate {
+	private String idResidence;
+	private String firstName;
+	private String surName;
+	private String email;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestAdminUpdatePassword.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestAdminUpdatePassword {
+	private String password;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestAttendanceInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import org.springframework.web.multipart.MultipartFile;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestAttendanceInsert {
+	private String idUser;
+	private String description;
+	private MultipartFile file;
+	private String ssid;
+	private String bssid;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestAttendanceSync.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+import java.util.Date;
+
+@Setter
+@Getter
+public class RequestAttendanceSync {
+    private String idUser;
+    private Date recordedAt; // timestamp real offline
+    private Boolean isEntry; // true=entrada, false=salida
+    private Double clientSimilarity;
+    private String base64Image; // imagen para re-verificar con Python
+    private String ssid; // SSID de la red Wi-Fi
+    private String bssid; // BSSID de la red Wi-Fi
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestChangePassword.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestChangePassword {
+    private String oldPassword;
+    private String newPassword;
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestDeactivateUser.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestDeactivateUser {
+    private Boolean active;
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestDocumentEnterInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import org.springframework.web.multipart.MultipartFile;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestDocumentEnterInsert {
+	private String idUser;
+	private MultipartFile file;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestDocumentGeneralInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import org.springframework.web.multipart.MultipartFile;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestDocumentGeneralInsert {
+	private String idUser;
+	private String type;
+	private MultipartFile file;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestDocumentResignationInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import org.springframework.web.multipart.MultipartFile;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestDocumentResignationInsert {
+	private String idUser;
+	private MultipartFile file;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestLogin.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestLogin {
+    private String email;
+    private String password;
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestPhotoInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import org.springframework.web.multipart.MultipartFile;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestPhotoInsert {
+	private String idUser;
+	private MultipartFile[] files;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestResidenceInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestResidenceInsert {
+	private String name;
+	private String wifiSsid;
+	private String wifiBssid;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestResidenceUpdate.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestResidenceUpdate {
+	private String name;
+	private String wifiSsid;
+	private String wifiBssid;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestUserInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestUserInsert {
+	private String idResidence;
+	private String firstName;
+	private String surName;
+	private String email;
+	private String password;
+	private int cellPhoneNumber;
+	private int cellPhoneEmergency;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestUserUpdate.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestUserUpdate {
+	private String idResidence;
+	private String firstName;
+	private String surName;
+	private String email;
+	private String password;
+	private int cellPhoneNumber;
+	private int cellPhoneEmergency;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/request/RequestUserUpdatePassword.java
+========================================
+package com.epiis.projectcasaketteler.dto.request;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class RequestUserUpdatePassword {
+	private String password;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAdminDeleteById.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseAdminDeleteById extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAdminGetAll.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseAdminGetAll extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAdminGetById.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseAdminGetById extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAdminInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseAdminInsert extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAdminUpdate.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseAdminUpdate extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAdminUpdatePassword.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseAdminUpdatePassword extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAttendanceInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseAttendanceInsert extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAttendancePage.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import java.util.List;
+
+public class ResponseAttendancePage {
+    private List<?> content;
+    private int page;
+    private int size;
+    private long totalElements;
+    private int totalPages;
+    private boolean last;
+
+    public ResponseAttendancePage(org.springframework.data.domain.Page<?> page) {
+        this.content = page.getContent();
+        this.page = page.getNumber();
+        this.size = page.getSize();
+        this.totalElements = page.getTotalElements();
+        this.totalPages = page.getTotalPages();
+        this.last = page.isLast();
+    }
+
+    public List<?> getContent() {
+        return content;
+    }
+
+    public int getPage() {
+        return page;
+    }
+
+    public int getSize() {
+        return size;
+    }
+
+    public long getTotalElements() {
+        return totalElements;
+    }
+
+    public int getTotalPages() {
+        return totalPages;
+    }
+
+    public boolean isLast() {
+        return last;
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseDocumentEnterInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseDocumentEnterInsert extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseDocumentGeneralInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseDocumentGeneralInsert extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseDocumentResignationInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseDocumentResignationInsert extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseFaceVerification.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseFaceVerification extends ResponseGeneric {
+	private boolean verified;
+	private String error;
+	private double similarity; // AGREGAR
+	private Boolean entrada; // true = se registró entrada, false = se registró salida
+
+	public Boolean getEntrada() {
+		return entrada;
+	}
+
+	public void setEntrada(Boolean entrada) {
+		this.entrada = entrada;
+	}
+
+	public double getSimilarity() {
+		return similarity;
+	}
+
+	public void setSimilarity(double similarity) {
+		this.similarity = similarity;
+	}
+
+	// getters/setters existentes...
+	public boolean isVerified() {
+		return verified;
+	}
+
+	public void setVerified(boolean verified) {
+		this.verified = verified;
+	}
+
+	public String getError() {
+		return error;
+	}
+
+	public void setError(String error) {
+		this.error = error;
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseLogin.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class ResponseLogin extends ResponseGeneric {
+    private String token;
+    private String userId;
+    private String role;
+    private String firstName;
+    private String surName;
+    private Boolean firstLogin;
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponsePhotoFilter.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+public class ResponsePhotoFilter {
+    private boolean success;
+
+    @JsonProperty("best_image")
+    private String bestImage;
+
+    @JsonProperty("sharpness_score")
+    private double sharpnessScore;
+
+    private String error;
+
+    public boolean isSuccess() {
+        return success;
+    }
+
+    public void setSuccess(boolean success) {
+        this.success = success;
+    }
+
+    public String getBestImage() {
+        return bestImage;
+    }
+
+    public void setBestImage(String bestImage) {
+        this.bestImage = bestImage;
+    }
+
+    public double getSharpnessScore() {
+        return sharpnessScore;
+    }
+
+    public void setSharpnessScore(double sharpnessScore) {
+        this.sharpnessScore = sharpnessScore;
+    }
+
+    public String getError() {
+        return error;
+    }
+
+    public void setError(String error) {
+        this.error = error;
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponsePhotoInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+public class ResponsePhotoInsert extends ResponseGeneric {
+    private List<Map<String, Object>> photoQualityReport = new ArrayList<>();
+
+    public List<Map<String, Object>> getPhotoQualityReport() {
+        return photoQualityReport;
+    }
+
+    public void setPhotoQualityReport(List<Map<String, Object>> report) {
+        this.photoQualityReport = report;
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseResidenceDeleteById.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseResidenceDeleteById extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseResidenceGetById.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseResidenceGetById extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseResidenceInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseResidenceInsert extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseResidenceUpdate.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseResidenceUpdate extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseResidenveGetAll.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseResidenveGetAll extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseSyncResult.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class ResponseSyncResult {
+    private int procesados;
+    private int rechazados;
+    private String type;
+    private List<SyncRecordDetail> detalle = new ArrayList<>();
+
+    public static class SyncRecordDetail {
+        private String idUser;
+        private String recordedAt;
+        private String resultado; // "PROCESADO" o "RECHAZADO"
+        private String motivo; // null si procesado, mensaje si rechazado
+
+        public SyncRecordDetail(String idUser, String recordedAt,
+                String resultado, String motivo) {
+            this.idUser = idUser;
+            this.recordedAt = recordedAt;
+            this.resultado = resultado;
+            this.motivo = motivo;
+        }
+
+        public String getIdUser() {
+            return idUser;
+        }
+
+        public String getRecordedAt() {
+            return recordedAt;
+        }
+
+        public String getResultado() {
+            return resultado;
+        }
+
+        public String getMotivo() {
+            return motivo;
+        }
+    }
+
+    public void agregarProcesado(String idUser, String recordedAt) {
+        procesados++;
+        detalle.add(new SyncRecordDetail(idUser, recordedAt, "PROCESADO", null));
+    }
+
+    public void agregarRechazado(String idUser, String recordedAt, String motivo) {
+        rechazados++;
+        detalle.add(new SyncRecordDetail(idUser, recordedAt, "RECHAZADO", motivo));
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public int getProcesados() {
+        return procesados;
+    }
+
+    public int getRechazados() {
+        return rechazados;
+    }
+
+    public List<SyncRecordDetail> getDetalle() {
+        return detalle;
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseUserDeleteById.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseUserDeleteById extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseUserGetAll.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseUserGetAll extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseUserGetById.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseUserGetById extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseUserInsert.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseUserInsert extends ResponseGeneric {
+
+    private String temporalPassword;
+
+    public String getTemporalPassword() {
+        return temporalPassword;
+    }
+
+    public void setTemporalPassword(String temporalPassword) {
+        this.temporalPassword = temporalPassword;
+    }
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseUserUpdate.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseUserUpdate extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseUserUpdatePassword.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.generic.ResponseGeneric;
+
+public class ResponseUserUpdatePassword extends ResponseGeneric{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/entity/EntityAdmin.java
+========================================
+package com.epiis.projectcasaketteler.entity;
+
+import java.util.Date;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "tadmin")
+@Setter
+@Getter
+public class EntityAdmin {
+
+	public enum AdminRole {
+		SUPER_ADMIN, ADMIN
+	}
+
+	@Id
+	@Column(name = "idAdmin")
+	private String idAdmin;
+
+	@JsonBackReference
+	@JoinColumn(name = "idResidence")
+	@ManyToOne(fetch = FetchType.LAZY)
+	private EntityResidence parentResidence;
+
+	@Column(name = "firstName")
+	private String firstName;
+
+	@Column(name = "surName")
+	private String surName;
+
+	@Column(name = "email", unique = true)
+	private String email;
+
+	@Column(name = "password")
+	private String password;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "role")
+	private AdminRole role = AdminRole.ADMIN;
+
+	@Column(name = "active")
+	private Boolean active = true;
+
+	@Column(name = "loginAttempts")
+	private Integer loginAttempts = 0;
+
+	@Column(name = "lockedUntil")
+	private Date lockedUntil;
+
+	@Column(name = "created_at")
+	private Date created_at;
+
+	@Column(name = "updated_at")
+	private Date updated_at;
+
+	@PrePersist
+	protected void onCreate() {
+		created_at = new Date();
+		updated_at = new Date();
+	}
+
+	@PreUpdate
+	protected void onUpdate() {
+		updated_at = new Date();
+	}
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/entity/EntityAttendance.java
+========================================
+package com.epiis.projectcasaketteler.entity;
+
+import java.util.Date;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "tattendance")
+@Setter
+@Getter
+public class EntityAttendance {
+	@Id
+	@Column(name = "idAtendance")
+	private String idAtendance;
+
+	@JsonBackReference
+	@JoinColumn(name = "idUser")
+	@ManyToOne(fetch = FetchType.LAZY)
+	private EntityUser parentUser;
+
+	@Column(name = "entryDate")
+	private Date entryDate;
+
+	@Column(name = "departureDate")
+	private Date departureDate;
+
+	@Column(name = "status")
+	private Boolean status;
+
+	@Column(name = "description")
+	private String description;
+
+	@Column(name = "created_at")
+	private Date created_at;
+
+	@Column(name = "updated_at")
+	private Date updated_at;
+
+	@Column(name = "recordedAt")
+	private Date recordedAt; // hora real cuando ocurrió offline
+
+	@Column(name = "syncedAt")
+	private Date syncedAt; // hora cuando llegó al servidor
+
+	@Column(name = "verifiedByServer")
+	private Boolean verifiedByServer = false; // confirmación Python
+
+	@Column(name = "clientSimilarity")
+	private Double clientSimilarity; // similitud reportada por el móvil
+
+	@Column(name = "serverSimilarity")
+	private Double serverSimilarity; // similitud confirmada por Python
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/entity/EntityDocumentEnter.java
+========================================
+package com.epiis.projectcasaketteler.entity;
+
+import java.util.Date;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "tdocumentEnter")
+@Setter
+@Getter
+public class EntityDocumentEnter {
+	@Id
+	@Column(name = "idDocumentEnter")
+	private String idDocumentEnter;
+
+	@JsonBackReference
+	@JoinColumn(name = "idUser")
+	@ManyToOne(fetch = FetchType.LAZY)
+	private EntityUser parentUser;
+
+	@Column(name = "nameDocumentEnter")
+	private String nameDocumentEnter;
+
+	@Column(name = "extensionDocumentEnter")
+	private String extensionDocumentEnter;
+
+	@Column(name = "created_at")
+	private Date created_at;
+
+	@Column(name = "updated_at")
+	private Date updated_at;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "status")
+	private DocumentEnterStatus status = DocumentEnterStatus.PENDIENTE;
+
+	@Column(name = "observations")
+	private String observations;
+
+	@Column(name = "downloadable")
+	private Boolean downloadable = false;
+
+	public enum DocumentEnterStatus {
+		PENDIENTE, APROBADO, OBSERVADO, RECHAZADO
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/entity/EntityDocumentGeneral.java
+========================================
+package com.epiis.projectcasaketteler.entity;
+
+import java.util.Date;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "tdocumentGeneral")
+@Setter
+@Getter
+public class EntityDocumentGeneral {
+	@Id
+	@Column(name = "idDocumentGeneral")
+	private String idDocumentGeneral;
+
+	@JsonBackReference
+	@JoinColumn(name = "idUser")
+	@ManyToOne(fetch = FetchType.LAZY)
+	private EntityUser parentUser;
+
+	@Column(name = "type")
+	private String type;
+
+	@Column(name = "nameDocumentGeneral")
+	private String nameDocumentGeneral;
+
+	@Column(name = "extensionDocumentGeneral")
+	private String extensionDocumentGeneral;
+
+	@Column(name = "created_at")
+	private Date created_at;
+
+	@Column(name = "updated_at")
+	private Date updated_at;
+
+	@Column(name = "downloadable")
+	private Boolean downloadable = false;
+
+	@Column(name = "observations")
+	private String observations;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "status")
+	private DocumentStatus status = DocumentStatus.PENDIENTE;
+
+	public enum DocumentStatus {
+		PENDIENTE, APROBADO, OBSERVADO, RECHAZADO
+	}
+
+	@Column(name = "period")
+	private String period; // formato "2026-06" para mensual, "2026-1" para semestral
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/entity/EntityDocumentResignation.java
+========================================
+package com.epiis.projectcasaketteler.entity;
+
+import java.util.Date;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "tdocumentResignation")
+@Setter
+@Getter
+public class EntityDocumentResignation {
+	@Id
+	@Column(name = "idDocumentResignation")
+	private String idDocumentResignation;
+
+	@JsonBackReference
+	@JoinColumn(name = "idUser")
+	@ManyToOne(fetch = FetchType.LAZY)
+	private EntityUser parentUser;
+
+	@Column(name = "nameDocumentResignation")
+	private String nameDocumentResignation;
+
+	@Column(name = "extensionDocumentResignation")
+	private String extensionDocumentResignation;
+
+	public enum ResignationStatus {
+		PENDIENTE, APROBADO, OBSERVADO, RECHAZADO
+	}
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "status")
+	private ResignationStatus status = ResignationStatus.PENDIENTE;
+
+	@Column(name = "observations")
+	private String observations;
+
+	@Column(name = "created_at")
+	private Date created_at;
+
+	@Column(name = "updated_at")
+	private Date updated_at;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/entity/EntityPhoto.java
+========================================
+package com.epiis.projectcasaketteler.entity;
+
+import java.util.Date;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "tphoto")
+@Setter
+@Getter
+public class EntityPhoto {
+	@Id
+	@Column(name = "idPhoto")
+	private String idPhoto;
+	
+	@JsonBackReference
+	@JoinColumn(name = "iduser")
+	@ManyToOne(fetch = FetchType.LAZY)
+	private EntityUser parentUser;
+	
+	@Column(name = "namePhoto")
+	private String namePhoto;
+	
+	@Column(name = "extensionPhoto")
+	private String extensionPhoto;
+	
+	@Column(name = "created_at")
+	private Date created_at;
+	
+	@Column(name = "updated_at")
+	private Date updated_at;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/entity/EntityResidence.java
+========================================
+package com.epiis.projectcasaketteler.entity;
+
+import java.util.Date;
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "tresidence")
+@Setter
+@Getter
+public class EntityResidence {
+	@Id
+	@Column(name = "idResidence")
+	private String idResidence;
+
+	@Column(name = "name")
+	private String name;
+
+	@Column(name = "idAddress")
+	private String ipAddress;
+
+	@Column(name = "created_at")
+	private Date created_at;
+
+	@Column(name = "updated_at")
+	private Date updated_at;
+
+	@Column(name = "wifiSsid")
+	private String wifiSsid;
+
+	@Column(name = "wifiBssid")
+	private String wifiBssid;
+
+	@JsonManagedReference
+	@OneToMany(mappedBy = "parentResidence", cascade = CascadeType.ALL)
+	private List<EntityAdmin> childAdmin;
+
+	@JsonManagedReference
+	@OneToMany(mappedBy = "parentResidence", cascade = CascadeType.ALL)
+	private List<EntityUser> childUser;
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/entity/EntityUser.java
+========================================
+package com.epiis.projectcasaketteler.entity;
+
+import java.util.Date;
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "tuser")
+@Setter
+@Getter
+public class EntityUser {
+
+	public enum UserRole {
+		RESIDENTE, ADMIN, GUARDIA
+	}
+
+	@Id
+	@Column(name = "idUser")
+	private String idUser;
+
+	@JsonBackReference
+	@JoinColumn(name = "idResidence")
+	@ManyToOne(fetch = FetchType.LAZY)
+	private EntityResidence parentResidence;
+
+	@Column(name = "firstName")
+	private String firstName;
+
+	@Column(name = "surName")
+	private String surName;
+
+	@Column(name = "email", unique = true)
+	private String email;
+
+	@Column(name = "password")
+	private String password;
+
+	@Column(name = "cellPhoneNumber")
+	private String cellPhoneNumber; // CAMBIADO a String
+
+	@Column(name = "cellPhoneEmergency")
+	private String cellPhoneEmergency; // CAMBIADO a String
+
+	@Column(name = "ipAddressLocal")
+	private String ipAddressLocal; // NOMBRE CORREGIDO
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "role")
+	private UserRole role = UserRole.RESIDENTE;
+
+	@Column(name = "active")
+	private Boolean active = true;
+
+	@Column(name = "firstLogin")
+	private Boolean firstLogin = true;
+
+	@Column(name = "temporalPassword")
+	private String temporalPassword;
+
+	@Column(name = "bestPhotoReference")
+	private String bestPhotoReference;
+
+	@Column(name = "loginAttempts")
+	private Integer loginAttempts = 0;
+
+	@Column(name = "lockedUntil")
+	private Date lockedUntil;
+
+	@Column(name = "created_at")
+	private Date created_at;
+
+	@Column(name = "updated_at")
+	private Date updated_at;
+
+	@JsonManagedReference
+	@OneToMany(mappedBy = "parentUser", cascade = CascadeType.ALL)
+	private List<EntityPhoto> childPhoto;
+
+	@JsonManagedReference
+	@OneToMany(mappedBy = "parentUser", cascade = CascadeType.ALL)
+	private List<EntityAttendance> childAteAttendance;
+
+	@JsonManagedReference
+	@OneToMany(mappedBy = "parentUser", cascade = CascadeType.ALL)
+	private List<EntityDocumentEnter> childDocumentEnter;
+
+	@JsonManagedReference
+	@OneToMany(mappedBy = "parentUser", cascade = CascadeType.ALL)
+	private List<EntityDocumentGeneral> childDocumentGeneral;
+
+	@JsonManagedReference
+	@OneToMany(mappedBy = "parentUser", cascade = CascadeType.ALL)
+	private List<EntityDocumentResignation> childDocumentResignation;
+
+	@PrePersist
+	protected void onCreate() {
+		created_at = new Date();
+		updated_at = new Date();
+	}
+
+	@PreUpdate
+	protected void onUpdate() {
+		updated_at = new Date();
+	}
+
+	// GETTER Y SETTER explícito para ipAddressLocal (por si lombok no funciona)
+	public String getIpAddressLocal() {
+		return ipAddressLocal;
+	}
+
+	public void setIpAddressLocal(String ipAddressLocal) {
+		this.ipAddressLocal = ipAddressLocal;
+	}
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/generic/ResponseGeneric.java
+========================================
+package com.epiis.projectcasaketteler.generic;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
+public class ResponseGeneric {
+	private String type;
+	private final List<String> listMessage;
+	
+	protected ResponseGeneric() {
+		this.type = "error";
+		this.listMessage = new ArrayList<>();
+	}
+	
+	public String getType() {
+		return this.type;
+	}
+	
+	public void success() {
+		this.type = "success";
+	}
+	
+	public void warning() {
+		this.type = "warning";
+	}
+	
+	public void error() {
+		this.type = "error";
+	}
+	
+	public void exception() {
+		this.type = "exception";
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/helper/DocumentValidationHelper.java
+========================================
+package com.epiis.projectcasaketteler.helper;
+
+import org.springframework.stereotype.Component;
+import org.springframework.web.multipart.MultipartFile;
+
+@Component
+public class DocumentValidationHelper {
+
+    private static final long MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+    private static final String[] ALLOWED_EXTENSIONS = { "pdf", "jpg", "jpeg", "png" };
+
+    public String validate(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return "El archivo está vacío o no fue enviado";
+        }
+
+        // Validar tamaño
+        if (file.getSize() > MAX_SIZE_BYTES) {
+            return "El archivo supera el límite de 10 MB";
+        }
+
+        // Validar extensión
+        String originalFileName = file.getOriginalFilename();
+        if (originalFileName == null || !originalFileName.contains(".")) {
+            return "El archivo no tiene una extensión válida";
+        }
+
+        String extension = originalFileName
+                .substring(originalFileName.lastIndexOf(".") + 1)
+                .toLowerCase();
+
+        for (String allowed : ALLOWED_EXTENSIONS) {
+            if (allowed.equals(extension)) {
+                return null; // null = sin error, archivo válido
+            }
+        }
+
+        return "Tipo de archivo no permitido. Solo se aceptan PDF, JPG y PNG";
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/helper/EmailHelper.java
+========================================
+package com.epiis.projectcasaketteler.helper;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.stereotype.Component;
+
+@Component
+public class EmailHelper {
+
+    @Autowired
+    private JavaMailSender mailSender;
+
+    @Value("${spring.mail.username}")
+    private String fromEmail;
+
+    public void sendTemporaryCredentials(String to, String username, String password) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(fromEmail);
+        message.setTo(to);
+        message.setSubject("Bienvenido a Casa Ketteler - Credenciales Temporales");
+        message.setText(String.format(
+                "Hola,\n\n" +
+                        "Se ha creado tu cuenta en el sistema de Casa Ketteler.\n\n" +
+                        "Tus credenciales temporales son:\n" +
+                        "Usuario: %s\n" +
+                        "Contraseña temporal: %s\n\n" +
+                        "Por favor, ingresa al sistema y cambia tu contraseña en tu primer acceso.\n\n" +
+                        "Saludos,\n" +
+                        "Equipo Casa Ketteler",
+                username, password));
+
+        mailSender.send(message);
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/helper/JwtHelper.java
+========================================
+package com.epiis.projectcasaketteler.helper;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+import java.security.Key;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
+
+@Component
+public class JwtHelper {
+
+    @Value("${jwt.secret:mySecretKeyForJWTTokenGenerationAndValidation2025}")
+    private String secret;
+
+    @Value("${jwt.expiration:86400000}") // 24 horas en milisegundos
+    private Long expiration;
+
+    private Key getSigningKey() {
+        byte[] keyBytes = secret.getBytes();
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    public String generateToken(String userId, String email, String role) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", userId);
+        claims.put("role", role);
+        return createToken(claims, email);
+    }
+
+    private String createToken(Map<String, Object> claims, String subject) {
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(subject)
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public String extractEmail(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
+    public String extractUserId(String token) {
+        return extractClaim(token, claims -> claims.get("userId", String.class));
+    }
+
+    public String extractRole(String token) {
+        return extractClaim(token, claims -> claims.get("role", String.class));
+    }
+
+    public Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+
+    private Claims extractAllClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(getSigningKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+    }
+
+    private Boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
+
+    public Boolean validateToken(String token, String email) {
+        final String extractedEmail = extractEmail(token);
+        return (extractedEmail.equals(email) && !isTokenExpired(token));
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/helper/ObtainIpAddressHelper.java
+========================================
+package com.epiis.projectcasaketteler.helper;
+
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import jakarta.servlet.http.HttpServletRequest;
+
+@Component
+public class ObtainIpAddressHelper {
+
+	private HttpServletRequest getCurrentRequest() {
+		ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+		if (attributes != null) {
+			return attributes.getRequest();
+		}
+		return null;
+	}
+
+	public String get(String campo) {
+		HttpServletRequest request = getCurrentRequest();
+		if (request != null) {
+			return request.getParameter(campo);
+		}
+		return null;
+	}
+
+	public String getIp() {
+		HttpServletRequest request = getCurrentRequest();
+		if (request != null) {
+			String ip = request.getHeader("X-Forwarded-For");
+			if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+				ip = request.getHeader("Proxy-Client-IP");
+			}
+			if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+				ip = request.getHeader("WL-Proxy-Client-IP");
+			}
+			if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+				ip = request.getRemoteAddr();
+			}
+			return ip;
+		}
+		return "127.0.0.1";
+	}
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/helper/PasswordEncoderHelper.java
+========================================
+package com.epiis.projectcasaketteler.helper;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+
+@Configuration
+public class PasswordEncoderHelper {
+	@Bean
+	public BCryptPasswordEncoder passwordEncoder() {
+		return new BCryptPasswordEncoder();
+	}
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/helper/PythonFaceRecognitionHelper.java
+========================================
+package com.epiis.projectcasaketteler.helper;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.springframework.stereotype.Component;
+
+import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
+import com.epiis.projectcasaketteler.dto.response.ResponsePhotoFilter;
+
+import tools.jackson.databind.ObjectMapper;
+
+@Component
+public class PythonFaceRecognitionHelper {
+
+    private static final String SERVER_URL = "http://localhost:5000";
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    private String postJson(String endpoint, Map<String, Object> body) throws Exception {
+        String jsonBody = mapper.writeValueAsString(body);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(SERVER_URL + endpoint))
+                .timeout(Duration.ofSeconds(60))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .build();
+        HttpResponse<String> response = httpClient.send(request,
+                HttpResponse.BodyHandlers.ofString());
+        return response.body();
+    }
+
+    public ResponsePhotoFilter seleccionarMejorFoto(String directorioUsuario) {
+        try {
+            File dir = new File(directorioUsuario);
+            Map<String, Object> body = new HashMap<>();
+            body.put("directorio", dir.getAbsolutePath());
+
+            String json = postJson("/filtro", body);
+            return mapper.readValue(json, ResponsePhotoFilter.class);
+
+        } catch (Exception e) {
+            ResponsePhotoFilter error = new ResponsePhotoFilter();
+            error.setSuccess(false);
+            error.setError("Error conectando al servidor de reconocimiento: " + e.getMessage());
+            return error;
+        }
+    }
+
+    public ResponseFaceVerification verificarRostro(String rutaImagen, String idUser,
+            String bestPhotoFileName) {
+        try {
+            String directorioUsuario = "storage/Photo/" + idUser;
+            String mejorFotoNombre;
+
+            if (bestPhotoFileName != null && !bestPhotoFileName.isEmpty()) {
+                mejorFotoNombre = bestPhotoFileName;
+            } else {
+                ResponsePhotoFilter filtro = seleccionarMejorFoto(directorioUsuario);
+                if (!filtro.isSuccess()) {
+                    ResponseFaceVerification error = new ResponseFaceVerification();
+                    error.setVerified(false);
+                    error.setError(filtro.getError());
+                    return error;
+                }
+                mejorFotoNombre = filtro.getBestImage();
+            }
+
+            File mejorFoto = new File(directorioUsuario + "/" + mejorFotoNombre);
+            String rutaAbsolutaMejorFoto = mejorFoto.getAbsolutePath();
+
+            File capturaFile = new File(rutaImagen);
+            byte[] imageBytes = java.nio.file.Files.readAllBytes(capturaFile.toPath());
+            String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("rutaReferencia", rutaAbsolutaMejorFoto);
+            body.put("imagenBase64", base64Image);
+            body.put("idUser", idUser);
+
+            String json = postJson("/verificar", body);
+            return mapper.readValue(json, ResponseFaceVerification.class);
+
+        } catch (Exception e) {
+            ResponseFaceVerification error = new ResponseFaceVerification();
+            error.setVerified(false);
+            error.setError(e.getMessage());
+            return error;
+        }
+    }
+
+    public ResponseFaceVerification verificarRostroBase64(String base64Image, String idUser,
+            String bestPhotoFileName) {
+        File tempFile = null;
+        try {
+            byte[] imageBytes = Base64.getDecoder().decode(base64Image);
+            String tempDir = "temp/";
+            new File(tempDir).mkdirs();
+            String fileName = "sync_" + idUser + "_" + System.currentTimeMillis() + ".jpg";
+            tempFile = new File(tempDir + fileName);
+
+            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                fos.write(imageBytes);
+            }
+
+            return verificarRostro(tempFile.getAbsolutePath(), idUser, bestPhotoFileName);
+
+        } catch (Exception e) {
+            ResponseFaceVerification error = new ResponseFaceVerification();
+            error.setVerified(false);
+            error.setError("Error decodificando imagen: " + e.getMessage());
+            return error;
+        } finally {
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
+    }
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/ProjectcasakettelerApplication.java
+========================================
+package com.epiis.projectcasaketteler;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class ProjectcasakettelerApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(ProjectcasakettelerApplication.class, args);
+	}
+
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/repository/RepositoryAdmin.java
+========================================
+package com.epiis.projectcasaketteler.repository;
+
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.epiis.projectcasaketteler.entity.EntityAdmin;
+
+
+
+public interface RepositoryAdmin extends JpaRepository<EntityAdmin, String>{
+	Optional<EntityAdmin> findByEmail(String email);
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/repository/RepositoryAttendance.java
+========================================
+package com.epiis.projectcasaketteler.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+import com.epiis.projectcasaketteler.entity.EntityAttendance;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+
+import java.util.Optional;
+import java.util.Date;
+import java.util.List;
+
+public interface RepositoryAttendance extends JpaRepository<EntityAttendance, String> {
+
+	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :entityUser ORDER BY a.created_at DESC LIMIT 1")
+	Optional<EntityAttendance> findTopByParentUserOrderByCreated_atDesc(@Param("entityUser") EntityUser entityUser);
+
+	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :user ORDER BY a.created_at DESC")
+	List<EntityAttendance> findByParentUserOrderByCreated_atDesc(@Param("user") EntityUser user);
+
+	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :user " +
+			"AND (:fechaInicio IS NULL OR a.created_at >= :fechaInicio) " +
+			"AND (:fechaFin IS NULL OR a.created_at <= :fechaFin) " +
+			"AND (:estado IS NULL OR a.status = :estado) " +
+			"ORDER BY a.created_at DESC")
+	Page<EntityAttendance> findByFilters(
+			@Param("user") EntityUser user,
+			@Param("fechaInicio") Date fechaInicio,
+			@Param("fechaFin") Date fechaFin,
+			@Param("estado") Boolean estado,
+			Pageable pageable);
+
+	@Query("SELECT a FROM EntityAttendance a WHERE " +
+			"(:fechaInicio IS NULL OR a.created_at >= :fechaInicio) " +
+			"AND (:fechaFin IS NULL OR a.created_at <= :fechaFin) " +
+			"AND (:estado IS NULL OR a.status = :estado) " +
+			"AND (:idUser IS NULL OR a.parentUser.idUser = :idUser) " +
+			"ORDER BY a.created_at DESC")
+	Page<EntityAttendance> findByFiltersAdmin(
+			@Param("fechaInicio") Date fechaInicio,
+			@Param("fechaFin") Date fechaFin,
+			@Param("estado") Boolean estado,
+			@Param("idUser") String idUser,
+			Pageable pageable);
+
+	@Query("SELECT COUNT(DISTINCT a.parentUser.idUser) FROM EntityAttendance a " +
+			"WHERE a.status = true " +
+			"AND a.created_at >= :inicioDia AND a.created_at < :finDia " +
+			"AND (:idResidence IS NULL OR a.parentUser.parentResidence.idResidence = :idResidence)")
+	long countPresentesHoy(
+			@Param("inicioDia") Date inicioDia,
+			@Param("finDia") Date finDia,
+			@Param("idResidence") String idResidence);
+
+	default Optional<EntityAttendance> findLastAttendanceByUser(EntityUser user) {
+		return findTopByParentUserOrderByCreated_atDesc(user);
+	}
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/repository/RepositoryDocumentEnter.java
+========================================
+package com.epiis.projectcasaketteler.repository;
+
+import java.util.List;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import com.epiis.projectcasaketteler.entity.EntityDocumentEnter;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+
+public interface RepositoryDocumentEnter extends JpaRepository<EntityDocumentEnter, String> {
+
+    @Query("SELECT d FROM EntityDocumentEnter d WHERE d.parentUser = :user ORDER BY d.created_at DESC")
+    List<EntityDocumentEnter> findByParentUserOrderByCreated_atDesc(@Param("user") EntityUser user);
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/repository/RepositoryDocumentGeneral.java
+========================================
+package com.epiis.projectcasaketteler.repository;
+
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import com.epiis.projectcasaketteler.entity.EntityDocumentGeneral;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+
+public interface RepositoryDocumentGeneral extends JpaRepository<EntityDocumentGeneral, String> {
+
+        @Query("SELECT d FROM EntityDocumentGeneral d WHERE d.parentUser = :user ORDER BY d.created_at DESC")
+        List<EntityDocumentGeneral> findByParentUserOrderByCreated_atDesc(@Param("user") EntityUser user);
+
+        @Query("SELECT d FROM EntityDocumentGeneral d WHERE d.parentUser = :user AND d.type = :type ORDER BY d.created_at DESC")
+        List<EntityDocumentGeneral> findByParentUserAndTypeOrderByCreated_atDesc(@Param("user") EntityUser user,
+                        @Param("type") String type);
+
+        @Query("SELECT d FROM EntityDocumentGeneral d WHERE d.parentUser = :user AND d.downloadable = true ORDER BY d.created_at DESC")
+        List<EntityDocumentGeneral> findByParentUserAndDownloadableTrueOrderByCreated_atDesc(
+                        @Param("user") EntityUser user);
+
+        @Query("SELECT d FROM EntityDocumentGeneral d WHERE d.parentUser = :user AND d.type = :type AND d.period = :period ORDER BY d.created_at DESC LIMIT 1")
+        Optional<EntityDocumentGeneral> findByParentUserAndTypeAndPeriod(
+                        @Param("user") EntityUser user,
+                        @Param("type") String type,
+                        @Param("period") String period);
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/repository/RepositoryDocumentResignation.java
+========================================
+package com.epiis.projectcasaketteler.repository;
+
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import com.epiis.projectcasaketteler.entity.EntityDocumentResignation;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+
+public interface RepositoryDocumentResignation extends JpaRepository<EntityDocumentResignation, String> {
+    @Query("SELECT d FROM EntityDocumentResignation d WHERE d.parentUser = :user ORDER BY d.created_at DESC")
+    List<EntityDocumentResignation> findByParentUserOrderByCreated_atDesc(@Param("user") EntityUser user);
+
+    @Query("SELECT d FROM EntityDocumentResignation d WHERE d.parentUser = :user ORDER BY d.created_at DESC LIMIT 1")
+    Optional<EntityDocumentResignation> findTopByParentUserOrderByCreated_atDesc(@Param("user") EntityUser user);
+}
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/repository/RepositoryPhoto.java
+========================================
+package com.epiis.projectcasaketteler.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.epiis.projectcasaketteler.entity.EntityPhoto;
+
+public interface RepositoryPhoto extends JpaRepository<EntityPhoto, String>{
+
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/repository/RepositoryResidence.java
+========================================
+package com.epiis.projectcasaketteler.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.epiis.projectcasaketteler.entity.EntityResidence;
+
+public interface RepositoryResidence extends JpaRepository<EntityResidence, String>{}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/repository/RepositoryUser.java
+========================================
+package com.epiis.projectcasaketteler.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import com.epiis.projectcasaketteler.entity.EntityUser;
+import java.util.Optional;
+
+public interface RepositoryUser extends JpaRepository<EntityUser, String> {
+
+	@Query("SELECT COUNT(u) FROM EntityUser u " +
+			"WHERE u.active = true " +
+			"AND u.parentResidence.idResidence = :idResidence")
+	long countActivosByResidencia(@Param("idResidence") String idResidence);
+
+	Optional<EntityUser> findByEmail(String email);
+}
+
+
+
+========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/service/CustomUserDetailsService.java
+========================================
+package com.epiis.projectcasaketteler.service;
+
+import java.util.Optional;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+import com.epiis.projectcasaketteler.entity.EntityAdmin;
+import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.repository.RepositoryAdmin;
+import com.epiis.projectcasaketteler.repository.RepositoryUser;
+
+@Service
+public class CustomUserDetailsService implements UserDetailsService {
+
+    @Autowired
+    private RepositoryUser repositoryUser;
+
+    @Autowired
+    private RepositoryAdmin repositoryAdmin;
+
+    @Override
+    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+        // Buscar primero en usuarios
+        Optional<EntityUser> userOptional = repositoryUser.findByEmail(email);
+
+        if (userOptional.isPresent()) {
+            EntityUser user = userOptional.get();
+            if (!user.getActive()) {
+                throw new UsernameNotFoundException("Usuario desactivado");
+            }
+            return new User(
+                    user.getEmail(),
+                    user.getPassword(),
+                    List.of(new SimpleGrantedAuthority(user.getRole().name())));
+        }
+
+        // Buscar en admins
+        Optional<EntityAdmin> adminOptional = repositoryAdmin.findByEmail(email);
+
+        if (adminOptional.isPresent()) {
+            EntityAdmin admin = adminOptional.get();
+            if (!admin.getActive()) {
+                throw new UsernameNotFoundException("Administrador desactivado");
+            }
+            return new User(
+                    admin.getEmail(),
+                    admin.getPassword(),
+                    List.of(new SimpleGrantedAuthority(admin.getRole().name())));
+        }
+
+        throw new UsernameNotFoundException("Usuario no encontrado con email: " + email);
+    }
+}
+
+
+========================================
+RUTA: src/main/resources/application.properties
+========================================
+spring.application.name=projectcasaketteler
+spring.jackson.time-zone=America/Lima
+server.port=8001
+
+# Conexión a Base de Datos
+spring.datasource.url=jdbc:mysql://localhost:3306/casaKetteler
+spring.datasource.username=root
+spring.datasource.password=root
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+# CONFIGURACIÓN CORREGIDA PARA CREAR TABLAS
+spring.jpa.generate-ddl=true
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+
+# NOTA: Se eliminó 'hibernate.hbm2ddl.auto=none' porque bloqueaba la creación de tablas.
+
+# Estrategia de nombres (Para que respete tus @Table(name="..."))
+spring.jpa.hibernate.naming.physical-strategy=org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+
+# Configuración de Hikari (Pool de conexiones)
+spring.datasource.hikari.minimum-idle=5
+spring.datasource.hikari.maximum-pool-size=10
+spring.datasource.hikari.idle-timeout=30000
+spring.datasource.hikari.connection-timeout=20000
+spring.datasource.hikari.max-lifetime=1800000
+
+# Configuración de archivos
+spring.servlet.multipart.max-file-size=20MB
+spring.servlet.multipart.max-request-size=100MB
+file.upload-dir=storage
+
+# Email configuration
+spring.mail.host=smtp.gmail.com
+spring.mail.port=587
+spring.mail.username=tuemail@gmail.com
+spring.mail.password=tucontraseñadeaplicacion
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
+
+# JWT Configuration
+jwt.secret=miClaveSecretaParaJWTConMasDe32CaracteresSegura2025
+jwt.expiration=86400000
+
+
+========================================
+RUTA: src/test/java/com/epiis/projectcasaketteler/ProjectcasakettelerApplicationTests.java
+========================================
+package com.epiis.projectcasaketteler;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class ProjectcasakettelerApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}
+
+
+
+========================================
+RUTA: ./python_scripts/FiltroCalidadFoto.py
+========================================
+# -----------------------------------------------------------------
+# SILENCIAR ADVERTENCIAS DE TENSORFLOW (DEBE SER LO PRIMERO)
+# -----------------------------------------------------------------
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+# -----------------------------------------------------------------
+
+import cv2
+from deepface import DeepFace
+import json
+import sys
+
+def seleccionar_mejor_foto(directorio_fotos):
+    """
+    Analiza todas las fotos de un directorio y devuelve el nombre de la que 
+    tiene el rostro más nítido y real.
+    """
+    if not os.path.exists(directorio_fotos):
+        return {"success": False, "error": "El directorio de fotos no existe"}
+
+    archivos = [
+        f for f in os.listdir(directorio_fotos) 
+        if f.lower().endswith((".jpg", ".jpeg", ".png"))
+    ]
+    
+    if len(archivos) == 0:
+        return {"success": False, "error": "No hay imágenes para evaluar"}
+
+    mejor_archivo = None
+    mejor_puntaje_nitidez = -1.0
+
+    for archivo in archivos:
+        ruta_imagen = os.path.join(directorio_fotos, archivo)
+        try:
+            # Sin anti-spoofing para fotos de referencia
+            analisis = DeepFace.extract_faces(
+                img_path=ruta_imagen,
+                anti_spoofing=False,  # <- CAMBIAR
+                enforce_detection=True
+            )
+            
+            if len(analisis) == 0:
+                continue
+
+            # Quitar la verificación de is_real
+            # if not analisis[0].get("is_real", True):
+            #     continue
+
+            # Medir nitidez
+            img = cv2.imread(ruta_imagen)
+            gris = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            nitidez = cv2.Laplacian(gris, cv2.CV_64F).var()
+
+            if nitidez > mejor_puntaje_nitidez:
+                mejor_puntaje_nitidez = nitidez
+                mejor_archivo = archivo
+
+        except Exception:
+            continue
+
+    # Si terminamos el ciclo y no hay un mejor archivo, ninguna foto servía
+    if mejor_archivo is None:
+        return {
+            "success": False,
+            "error": "Ninguna de las fotos contiene un rostro humano válido o real"
+        }
+
+    # Retornamos el ganador
+    return {
+        "success": True,
+        "best_image": mejor_archivo,
+        "sharpness_score": round(mejor_puntaje_nitidez, 2)
+    }
+
+# -----------------------------------
+# PUNTO DE ENTRADA
+# -----------------------------------
+if __name__ == "__main__":
+    try:
+        # Esperamos que Java nos envíe la ruta de la carpeta donde están las fotos a evaluar
+        if len(sys.argv) < 2:
+            print(json.dumps({
+                "success": False, 
+                "error": "Uso: python FiltroCalidadFoto.py <directorio_con_fotos>"
+            }))
+            sys.exit(1)
+
+        directorio_evaluacion = sys.argv[1]
+        resultado = seleccionar_mejor_foto(directorio_evaluacion)
+        
+        # Imprimir en formato JSON para que Java lo lea fácilmente
+        print(json.dumps(resultado))
+
+    except Exception as e:
+        print(json.dumps({
+            "success": False, 
+            "error": str(e)
+        }))
+        sys.exit(1)
+
+
+========================================
+RUTA: ./python_scripts/ReconocimientoFacial.py
+========================================
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+
+import tf_keras as keras
+import cv2
+from deepface import DeepFace
+import json
+import sys
+
+
+def verificar_usuario(ruta_imagen_capturada, ruta_foto_referencia):
+    # FASE 1: ANTI-SPOOFING (igual que antes)
+    try:
+        analisis = DeepFace.extract_faces(
+            img_path=ruta_imagen_capturada,
+            anti_spoofing=True,
+            enforce_detection=True
+        )
+        if len(analisis) == 0:
+            return {"success": False, "verified": False, "error": "No se detectó ningún rostro"}
+        
+        es_real = analisis[0]["is_real"]
+        if not es_real:
+            return {"success": True, "verified": False, "error": "Spoofing detectado"}
+
+    except Exception as e:
+        return {"success": False, "verified": False, "error": f"Error en validación facial: {str(e)}"}
+
+    # FASE 2: VERIFICACIÓN contra una sola foto
+    try:
+        if not os.path.exists(ruta_foto_referencia):
+            return {"success": False, "verified": False, "error": "Foto de referencia no existe"}
+
+        resultado = DeepFace.verify(
+            img1_path=ruta_imagen_capturada,
+            img2_path=ruta_foto_referencia,
+            model_name="ArcFace",
+            enforce_detection=False
+        )
+
+        distancia = resultado["distance"]
+        umbral = resultado["threshold"]
+        similarity = round((1 - distancia / umbral) * 100, 2)
+        similarity = max(0.0, min(100.0, similarity))
+
+        if resultado["verified"]:
+            return {"success": True, "verified": True, "similarity": similarity}
+        else:
+            return {"success": True, "verified": False, "similarity": similarity}
+
+    except Exception as e:
+        return {"success": False, "verified": False, "error": str(e)}
+
+
+if __name__ == "__main__":
+    try:
+        if len(sys.argv) < 3:
+            print(json.dumps({
+                "success": False,
+                "verified": False,
+                "error": "Uso: python ReconocimientoFacial.py <imagen_capturada> <foto_referencia>"
+            }))
+            sys.exit(1)
+
+        ruta_imagen = sys.argv[1]
+        ruta_referencia = sys.argv[2]  # ahora es una foto, no un directorio
+        resultado = verificar_usuario(ruta_imagen, ruta_referencia)
+        print(json.dumps(resultado))
+
+    except Exception as e:
+        print(json.dumps({"success": False, "verified": False, "error": str(e)}))
+        sys.exit(1)
+
+
+
+========================================
+RUTA: ./python_scripts/ServidorReconocimiento.py
+========================================
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+
+import tf_keras as keras
+import cv2
+from deepface import DeepFace
+from flask import Flask, request, jsonify
+import base64
+import uuid
+import json
+
+app = Flask(__name__)
+
+print("=== Cargando modelos de reconocimiento facial... ===")
+try:
+    DeepFace.build_model("ArcFace")
+    print("=== Modelos cargados correctamente ===")
+except Exception as e:
+    print(f"=== Error cargando modelos: {e} ===")
+
+def seleccionar_mejor_foto(directorio_fotos):
+    if not os.path.exists(directorio_fotos):
+        return {"success": False, "error": "El directorio de fotos no existe"}
+
+    archivos = [
+        f for f in os.listdir(directorio_fotos)
+        if f.lower().endswith((".jpg", ".jpeg", ".png"))
+    ]
+
+    if len(archivos) == 0:
+        return {"success": False, "error": "No hay imágenes para evaluar"}
+
+    mejor_archivo = None
+    mejor_puntaje_nitidez = -1.0
+
+    for archivo in archivos:
+        ruta_imagen = os.path.join(directorio_fotos, archivo)
+        try:
+            analisis = DeepFace.extract_faces(
+                img_path=ruta_imagen,
+                anti_spoofing=False,
+                enforce_detection=True
+            )
+            if len(analisis) == 0:
+                continue
+
+            img = cv2.imread(ruta_imagen)
+            gris = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            nitidez = cv2.Laplacian(gris, cv2.CV_64F).var()
+
+            if nitidez > mejor_puntaje_nitidez:
+                mejor_puntaje_nitidez = nitidez
+                mejor_archivo = archivo
+
+        except Exception:
+            continue
+
+    if mejor_archivo is None:
+        return {"success": False, "error": "Ninguna foto contiene un rostro válido"}
+
+    return {
+        "success": True,
+        "best_image": mejor_archivo,
+        "sharpness_score": round(mejor_puntaje_nitidez, 2)
+    }
+
+
+def verificar_rostro(ruta_imagen_capturada, ruta_foto_referencia):
+    try:
+        analisis = DeepFace.extract_faces(
+            img_path=ruta_imagen_capturada,
+            anti_spoofing=True,
+            enforce_detection=True
+        )
+        if len(analisis) == 0:
+            return {"success": False, "verified": False, "similarity": 0.0,
+                    "error": "No se detectó ningún rostro"}
+
+        es_real = analisis[0]["is_real"]
+        if not es_real:
+            return {"success": True, "verified": False, "similarity": 0.0,
+                    "error": "Spoofing detectado"}
+
+    except Exception as e:
+        return {"success": False, "verified": False, "similarity": 0.0,
+                "error": f"Error en validación facial: {str(e)}"}
+
+    try:
+        if not os.path.exists(ruta_foto_referencia):
+            return {"success": False, "verified": False, "similarity": 0.0,
+                    "error": "Foto de referencia no existe"}
+
+        resultado = DeepFace.verify(
+            img1_path=ruta_imagen_capturada,
+            img2_path=ruta_foto_referencia,
+            model_name="ArcFace",
+            enforce_detection=False
+        )
+
+        distancia = resultado["distance"]
+        umbral = resultado["threshold"]
+        similarity = round((1 - distancia / umbral) * 100, 2)
+        similarity = max(0.0, min(100.0, similarity))
+
+        return {
+            "success": True,
+            "verified": resultado["verified"],
+            "similarity": similarity
+        }
+
+    except Exception as e:
+        return {"success": False, "verified": False, "similarity": 0.0,
+                "error": str(e)}
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"})
+
+
+@app.route("/filtro", methods=["POST"])
+def filtro():
+    data = request.get_json()
+    directorio = data.get("directorio")
+    if not directorio:
+        return jsonify({"success": False, "error": "Falta el campo directorio"})
+    resultado = seleccionar_mejor_foto(directorio)
+    return jsonify(resultado)
+
+
+@app.route("/verificar", methods=["POST"])
+def verificar():
+    data = request.get_json()
+    ruta_referencia = data.get("rutaReferencia")
+    imagen_base64 = data.get("imagenBase64")
+    id_user = data.get("idUser")
+
+    if not ruta_referencia or not imagen_base64 or not id_user:
+        return jsonify({"success": False, "verified": False, "similarity": 0.0,
+                        "error": "Faltan campos requeridos"})
+
+    temp_path = None
+    try:
+        image_bytes = base64.b64decode(imagen_base64)
+        temp_dir = "temp/"
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_filename = f"srv_{id_user}_{uuid.uuid4().hex[:8]}.jpg"
+        temp_path = os.path.join(temp_dir, temp_filename)
+
+        with open(temp_path, "wb") as f:
+            f.write(image_bytes)
+
+        resultado = verificar_rostro(temp_path, ruta_referencia)
+        return jsonify(resultado)
+
+    except Exception as e:
+        return jsonify({"success": False, "verified": False, "similarity": 0.0,
+                        "error": str(e)})
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=False)
+
+
