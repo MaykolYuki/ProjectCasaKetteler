@@ -13,7 +13,10 @@ import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.epiis.projectcasaketteler.dto.request.RequestDocumentGeneralInsert;
@@ -217,6 +220,19 @@ public class BusinessDocumentGeneral {
 
 		java.nio.file.Path path = java.nio.file.Paths.get(filePath);
 		return new org.springframework.core.io.UrlResource(path.toUri());
+	}
+
+	@ExceptionHandler({ RuntimeException.class, java.io.FileNotFoundException.class })
+	public ResponseEntity<Map<String, Object>> handleFileErrors(Exception e) {
+		Map<String, Object> response = new HashMap<>();
+		response.put("type", "error");
+
+		String message = e.getMessage() != null && e.getMessage().contains("no encontrado")
+				? e.getMessage()
+				: "El archivo solicitado no está disponible.";
+
+		response.put("listMessage", java.util.List.of(message));
+		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
 	}
 
 	private String getCurrentMonthPeriod() {

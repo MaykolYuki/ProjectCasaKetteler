@@ -1,17 +1,22 @@
 package com.epiis.projectcasaketteler.dto.response;
 
+import com.epiis.projectcasaketteler.entity.EntityAttendance;
+import org.springframework.data.domain.Page;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class ResponseAttendancePage {
-    private List<?> content;
+    private List<ResponseAttendanceDTO> content;
     private int page;
     private int size;
     private long totalElements;
     private int totalPages;
     private boolean last;
 
-    public ResponseAttendancePage(org.springframework.data.domain.Page<?> page) {
-        this.content = page.getContent();
+    public ResponseAttendancePage(Page<EntityAttendance> page) {
+        this.content = page.getContent().stream()
+                .map(ResponseAttendanceDTO::new)
+                .collect(Collectors.toList());
         this.page = page.getNumber();
         this.size = page.getSize();
         this.totalElements = page.getTotalElements();
@@ -19,7 +24,7 @@ public class ResponseAttendancePage {
         this.last = page.isLast();
     }
 
-    public List<?> getContent() {
+    public List<ResponseAttendanceDTO> getContent() {
         return content;
     }
 

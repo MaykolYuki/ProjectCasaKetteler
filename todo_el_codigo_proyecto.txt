@@ -177,6 +177,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
@@ -202,14 +203,25 @@ public class BusinessAttendance {
     @Autowired
     private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
 
+    @Value("${app.temp.path}")
+    private String tempPath;
+
     public ResponseFaceVerification insert(RequestAttendanceInsert request) {
         File tempFile = null;
         ResponseFaceVerification response = new ResponseFaceVerification();
 
+        // Verificar que el servidor de reconocimiento facial esté activo
+        if (!pythonFaceRecognitionHelper.isServerRunning()) {
+            response.error();
+            response.getListMessage()
+                    .add("Error: El servicio de reconocimiento facial no está disponible. Contacte al administrador.");
+            return response;
+        }
+
         try {
             // 1. Usamos una ruta bien definida. "temp" es genial, pero asegurémonos de que
             // sea absoluta.
-            String tempDir = "temp/";
+            String tempDir = tempPath + "/";
             File directory = new File(tempDir);
             if (!directory.exists()) {
                 directory.mkdirs();
@@ -315,6 +327,7 @@ public class BusinessAttendance {
             newAttendance.setParentUser(entityUser);
             newAttendance.setEntryDate(new java.sql.Date(new Date().getTime()));
             newAttendance.setStatus(true);
+            newAttendance.setDescription(request.getDescription());
             newAttendance.setCreated_at(new java.sql.Date(new Date().getTime()));
 
             repositoryAttendance.save(newAttendance);
@@ -543,6 +556,10 @@ public class BusinessAttendance {
             return null;
         }
     }
+
+    public PythonFaceRecognitionHelper getPythonFaceRecognitionHelper() {
+        return pythonFaceRecognitionHelper;
+    }
 }
 
 
@@ -566,6 +583,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
@@ -612,6 +630,7 @@ public class BusinessAttendanceExport {
                 inicio, fin, estado, null, pageable).getContent();
     }
 
+    @Transactional(readOnly = true)
     public byte[] exportarExcel(String idUser, String fechaInicio,
             String fechaFin, Boolean estado) throws Exception {
         List<EntityAttendance> registros = obtenerDatos(idUser, fechaInicio, fechaFin, estado);
@@ -671,6 +690,7 @@ public class BusinessAttendanceExport {
         }
     }
 
+    @Transactional(readOnly = true)
     public byte[] exportarPDF(String idUser, String fechaInicio,
             String fechaFin, Boolean estado) throws Exception {
         List<EntityAttendance> registros = obtenerDatos(idUser, fechaInicio, fechaFin, estado);
@@ -770,6 +790,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -793,7 +814,8 @@ public class BusinessDocumentEnter {
 	@Autowired
 	private DocumentValidationHelper documentValidationHelper;
 
-	private String storageDir = "storage";
+	@Value("${app.storage.path}")
+	private String storageDir;;
 
 	public ResponseDocumentEnterInsert insert(RequestDocumentEnterInsert request) throws Exception {
 		ResponseDocumentEnterInsert response = new ResponseDocumentEnterInsert();
@@ -820,7 +842,7 @@ public class BusinessDocumentEnter {
 			return response;
 		}
 
-		Path storagePath = Paths.get(storageDir + "/DocumentEnter/" + entityUser.getFirstName());
+		Path storagePath = Paths.get(storageDir + "/DocumentEnter/" + entityUser.getIdUser());
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
 		}
@@ -871,6 +893,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -894,7 +917,8 @@ public class BusinessDocumentGeneral {
 	@Autowired
 	private DocumentValidationHelper documentValidationHelper;
 
-	private String storageDir = "storage";
+	@Value("${app.storage.path}")
+	private String storageDir;
 
 	public ResponseDocumentGeneralInsert insert(RequestDocumentGeneralInsert request) throws Exception {
 		ResponseDocumentGeneralInsert response = new ResponseDocumentGeneralInsert();
@@ -948,7 +972,7 @@ public class BusinessDocumentGeneral {
 		}
 
 		Path storagePath = Paths
-				.get(storageDir + "/DocumentGeneral/" + entityUser.getFirstName() + "/" + request.getType());
+				.get(storageDir + "/DocumentGeneral/" + entityUser.getIdUser() + "/" + request.getType());
 
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
@@ -1064,8 +1088,11 @@ public class BusinessDocumentGeneral {
 		}
 
 		EntityDocumentGeneral doc = optional.get();
-		String filePath = storageDir + "/DocumentGeneral/" +
-				doc.getParentUser().getFirstName() + "/" +
+
+		// Usar idUser en lugar de firstName para evitar problemas con
+		// espacios/caracteres
+		String idUser = doc.getParentUser().getIdUser();
+		String filePath = storageDir + "/DocumentGeneral/" + idUser + "/" +
 				doc.getType() + "/" +
 				doc.getNameDocumentGeneral();
 
@@ -1103,6 +1130,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -1125,7 +1153,8 @@ public class BusinessDocumentResignation {
 	@Autowired
 	private DocumentValidationHelper documentValidationHelper;
 
-	private String storageDir = "storage";
+	@Value("${app.storage.path}")
+	private String storageDir;
 
 	public ResponseDocumentResignationInsert insert(RequestDocumentResignationInsert request) throws Exception {
 		ResponseDocumentResignationInsert response = new ResponseDocumentResignationInsert();
@@ -1154,7 +1183,7 @@ public class BusinessDocumentResignation {
 			return response;
 		}
 
-		Path storagePath = Paths.get(storageDir + "/DocumentResignation/" + entityUser.getFirstName());
+		Path storagePath = Paths.get(storageDir + "/DocumentResignation/" + entityUser.getIdUser());
 
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
@@ -1262,7 +1291,7 @@ public class BusinessDocumentResignation {
 
 		EntityDocumentResignation doc = optional.get();
 		String filePath = storageDir + "/DocumentResignation/" +
-				doc.getParentUser().getFirstName() + "/" +
+				doc.getParentUser().getIdUser() + "/" +
 				doc.getNameDocumentResignation();
 
 		java.nio.file.Path path = java.nio.file.Paths.get(filePath);
@@ -1290,6 +1319,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -1313,7 +1343,8 @@ public class BusinessPhoto {
 	@Autowired
 	private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
 
-	private String storageDir = "storage";
+	@Value("${app.storage.path}")
+	private String storageDir;
 
 	public ResponsePhotoInsert insert(RequestPhotoInsert request) throws Exception {
 		ResponsePhotoInsert response = new ResponsePhotoInsert();
@@ -1883,20 +1914,66 @@ public class BusinessUser {
 		Map<String, Object> res = new HashMap<>();
 		ResponseUserGetById response = new ResponseUserGetById();
 
+		// Buscar primero en usuarios
 		Optional<EntityUser> entityUser = repositoryUser.findById(userId);
 
 		if (entityUser.isPresent()) {
+			EntityUser user = entityUser.get();
+
+			Map<String, Object> userData = new HashMap<>();
+			userData.put("idUser", user.getIdUser());
+			userData.put("firstName", user.getFirstName());
+			userData.put("surName", user.getSurName());
+			userData.put("email", user.getEmail());
+			userData.put("cellPhoneNumber", user.getCellPhoneNumber());
+			userData.put("cellPhoneEmergency", user.getCellPhoneEmergency());
+			userData.put("role", user.getRole());
+			userData.put("active", user.getActive());
+			userData.put("firstLogin", user.getFirstLogin());
+
+			if (user.getParentResidence() != null) {
+				userData.put("idResidence", user.getParentResidence().getIdResidence());
+				userData.put("residenceName", user.getParentResidence().getName());
+			}
+
 			response.setType("success");
 			response.getListMessage().add("Perfil obtenido correctamente");
 			res.put("message", response);
-			res.put("data", entityUser.get());
-		} else {
-			response.setType("error");
-			response.getListMessage().add("Usuario no encontrado");
-			res.put("message", response);
-			res.put("data", null);
+			res.put("data", userData);
+			return res;
 		}
 
+		// Si no es usuario, buscar en admins
+		Optional<EntityAdmin> entityAdmin = repositoryAdmin.findById(userId);
+
+		if (entityAdmin.isPresent()) {
+			EntityAdmin admin = entityAdmin.get();
+
+			Map<String, Object> adminData = new HashMap<>();
+			adminData.put("idUser", admin.getIdAdmin());
+			adminData.put("firstName", admin.getFirstName());
+			adminData.put("surName", admin.getSurName());
+			adminData.put("email", admin.getEmail());
+			adminData.put("role", admin.getRole());
+			adminData.put("active", admin.getActive());
+
+			if (admin.getParentResidence() != null) {
+				adminData.put("idResidence", admin.getParentResidence().getIdResidence());
+				adminData.put("residenceName", admin.getParentResidence().getName());
+			}
+
+			response.setType("success");
+			response.getListMessage().add("Perfil obtenido correctamente");
+			res.put("message", response);
+			res.put("data", adminData);
+			return res;
+		}
+
+		// No encontrado en ninguna tabla
+		response.setType("error");
+		response.getListMessage().add("Usuario no encontrado");
+		res.put("message", response);
+		res.put("data", null);
 		return res;
 	}
 
@@ -2141,7 +2218,20 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 
         if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
             jwt = authorizationHeader.substring(7);
-            email = jwtHelper.extractEmail(jwt);
+            try {
+                email = jwtHelper.extractEmail(jwt);
+            } catch (io.jsonwebtoken.ExpiredJwtException e) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter()
+                        .write("{\"type\":\"error\",\"message\":\"Token expirado. Inicie sesión nuevamente.\"}");
+                return;
+            } catch (Exception e) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"type\":\"error\",\"message\":\"Token inválido.\"}");
+                return;
+            }
         }
 
         if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
@@ -2205,7 +2295,8 @@ public class SecurityConfig {
 								"/casaketteler/indexresidence",
 								"/casaketteler/showresidence/**",
 								"/casaketteler/network/**",
-								"/casaketteler/verify"
+								"/casaketteler/verify",
+								"/casaketteler/attendance/health"
 
 						).permitAll()
 
@@ -2226,8 +2317,6 @@ public class SecurityConfig {
 								"/casaketteler/registerphoto",
 								"/casaketteler/documents/**", // listar y descargar documentos
 								"/casaketteler/resignation/**", // gestión renuncia admin
-								"/casaketteler/registerdocumentgeneral",
-								"/casaketteler/registerdocumententer",
 								"/casaketteler/attendance/filter",
 								"/casaketteler/attendance/export",
 								"/casaketteler/attendance/kpi")
@@ -2335,6 +2424,7 @@ RUTA: src/main/java/com/epiis/projectcasaketteler/controller/AttendanceControlle
 package com.epiis.projectcasaketteler.controller;
 
 import java.util.Map;
+import java.util.HashMap;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -2459,6 +2549,14 @@ public class AttendanceController {
         return ResponseEntity.ok(businessAttendance.getResumenKPI(idResidence));
     }
 
+    @GetMapping(path = "attendance/health")
+    public ResponseEntity<Map<String, Object>> checkHealth() {
+        Map<String, Object> res = new HashMap<>();
+        boolean serverOk = businessAttendance.getPythonFaceRecognitionHelper().isServerRunning();
+        res.put("type", serverOk ? "success" : "error");
+        res.put("reconocimientoFacial", serverOk ? "activo" : "inactivo");
+        return ResponseEntity.ok(res);
+    }
 }
 
 
@@ -2703,7 +2801,8 @@ public class NetworkController {
     // Endpoint para verificar si el SSID proporcionado es válido
     @GetMapping(path = "network/verify")
     public ResponseEntity<Map<String, Object>> verifyNetwork(
-            @RequestParam String ssid,
+            @RequestParam(required = false) String ssid,
+            @RequestParam(required = false) String bssid,
             @RequestParam String idResidence) {
 
         Map<String, Object> response = new HashMap<>();
@@ -2717,8 +2816,18 @@ public class NetworkController {
             return ResponseEntity.ok(response);
         }
 
-        String expectedSSID = optional.get().getWifiSsid();
-        boolean isValid = expectedSSID != null && expectedSSID.equals(ssid);
+        EntityResidence residence = optional.get();
+        boolean isValid = false;
+
+        // Priorizar BSSID si está configurado
+        String expectedBSSID = residence.getWifiBssid();
+        String expectedSSID = residence.getWifiSsid();
+
+        if (expectedBSSID != null && !expectedBSSID.isEmpty()) {
+            isValid = expectedBSSID.equalsIgnoreCase(bssid);
+        } else if (expectedSSID != null && !expectedSSID.isEmpty()) {
+            isValid = expectedSSID.equals(ssid);
+        }
 
         response.put("success", true);
         response.put("isValid", isValid);
@@ -3353,6 +3462,114 @@ public class ResponseAdminUpdatePassword extends ResponseGeneric{}
 
 
 ========================================
+RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAttendanceDTO.java
+========================================
+package com.epiis.projectcasaketteler.dto.response;
+
+import com.epiis.projectcasaketteler.entity.EntityAttendance;
+import java.util.Date;
+
+public class ResponseAttendanceDTO {
+    private String idAtendance;
+    private String idUser;
+    private String firstName;
+    private String surName;
+    private Date entryDate;
+    private Date departureDate;
+    private Boolean status;
+    private Date created_at;
+    private Date updated_at;
+    private Double clientSimilarity;
+    private Double serverSimilarity;
+    private Boolean verifiedByServer;
+    private Date recordedAt;
+    private Date syncedAt;
+    private String description;
+
+    public ResponseAttendanceDTO(EntityAttendance a) {
+        this.idAtendance = a.getIdAtendance();
+        this.entryDate = a.getEntryDate();
+        this.departureDate = a.getDepartureDate();
+        this.status = a.getStatus();
+        this.created_at = a.getCreated_at();
+        this.updated_at = a.getUpdated_at();
+        this.clientSimilarity = a.getClientSimilarity();
+        this.serverSimilarity = a.getServerSimilarity();
+        this.verifiedByServer = a.getVerifiedByServer();
+        this.recordedAt = a.getRecordedAt();
+        this.syncedAt = a.getSyncedAt();
+        this.description = a.getDescription();
+
+        if (a.getParentUser() != null) {
+            this.idUser = a.getParentUser().getIdUser();
+            this.firstName = a.getParentUser().getFirstName();
+            this.surName = a.getParentUser().getSurName();
+        }
+    }
+
+    public String getIdAtendance() {
+        return idAtendance;
+    }
+
+    public String getIdUser() {
+        return idUser;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public String getSurName() {
+        return surName;
+    }
+
+    public Date getEntryDate() {
+        return entryDate;
+    }
+
+    public Date getDepartureDate() {
+        return departureDate;
+    }
+
+    public Boolean getStatus() {
+        return status;
+    }
+
+    public Date getCreated_at() {
+        return created_at;
+    }
+
+    public Date getUpdated_at() {
+        return updated_at;
+    }
+
+    public Double getClientSimilarity() {
+        return clientSimilarity;
+    }
+
+    public Double getServerSimilarity() {
+        return serverSimilarity;
+    }
+
+    public Boolean getVerifiedByServer() {
+        return verifiedByServer;
+    }
+
+    public Date getRecordedAt() {
+        return recordedAt;
+    }
+
+    public Date getSyncedAt() {
+        return syncedAt;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+}
+
+
+========================================
 RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAttendanceInsert.java
 ========================================
 package com.epiis.projectcasaketteler.dto.response;
@@ -3368,18 +3585,23 @@ RUTA: src/main/java/com/epiis/projectcasaketteler/dto/response/ResponseAttendanc
 ========================================
 package com.epiis.projectcasaketteler.dto.response;
 
+import com.epiis.projectcasaketteler.entity.EntityAttendance;
+import org.springframework.data.domain.Page;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class ResponseAttendancePage {
-    private List<?> content;
+    private List<ResponseAttendanceDTO> content;
     private int page;
     private int size;
     private long totalElements;
     private int totalPages;
     private boolean last;
 
-    public ResponseAttendancePage(org.springframework.data.domain.Page<?> page) {
-        this.content = page.getContent();
+    public ResponseAttendancePage(Page<EntityAttendance> page) {
+        this.content = page.getContent().stream()
+                .map(ResponseAttendanceDTO::new)
+                .collect(Collectors.toList());
         this.page = page.getNumber();
         this.size = page.getSize();
         this.totalElements = page.getTotalElements();
@@ -3387,7 +3609,7 @@ public class ResponseAttendancePage {
         this.last = page.isLast();
     }
 
-    public List<?> getContent() {
+    public List<ResponseAttendanceDTO> getContent() {
         return content;
     }
 
@@ -4697,6 +4919,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
@@ -4712,6 +4935,12 @@ public class PythonFaceRecognitionHelper {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final ObjectMapper mapper = new ObjectMapper();
+
+    @Value("${app.storage.path}")
+    private String storagePath;
+
+    @Value("${app.temp.path}")
+    private String tempPath;
 
     private String postJson(String endpoint, Map<String, Object> body) throws Exception {
         String jsonBody = mapper.writeValueAsString(body);
@@ -4746,7 +4975,7 @@ public class PythonFaceRecognitionHelper {
     public ResponseFaceVerification verificarRostro(String rutaImagen, String idUser,
             String bestPhotoFileName) {
         try {
-            String directorioUsuario = "storage/Photo/" + idUser;
+            String directorioUsuario = storagePath + "/Photo/" + idUser;
             String mejorFotoNombre;
 
             if (bestPhotoFileName != null && !bestPhotoFileName.isEmpty()) {
@@ -4790,7 +5019,7 @@ public class PythonFaceRecognitionHelper {
         File tempFile = null;
         try {
             byte[] imageBytes = Base64.getDecoder().decode(base64Image);
-            String tempDir = "temp/";
+            String tempDir = tempPath + "/";
             new File(tempDir).mkdirs();
             String fileName = "sync_" + idUser + "_" + System.currentTimeMillis() + ".jpg";
             tempFile = new File(tempDir + fileName);
@@ -4810,6 +5039,21 @@ public class PythonFaceRecognitionHelper {
             if (tempFile != null && tempFile.exists()) {
                 tempFile.delete();
             }
+        }
+    }
+
+    public boolean isServerRunning() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(SERVER_URL + "/health"))
+                    .timeout(Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() == 200;
+        } catch (Exception e) {
+            return false;
         }
     }
 }
@@ -5159,6 +5403,10 @@ spring.mail.properties.mail.smtp.starttls.enable=true
 jwt.secret=miClaveSecretaParaJWTConMasDe32CaracteresSegura2025
 jwt.expiration=86400000
 
+# Direcciones hardcodeadas
+app.storage.path=C:/Users/yerry/Documents/Ingenieria de Software/BackendCasaKetteler/ProjectCasaKetteler/storage
+app.temp.path=C:/Users/yerry/Documents/Ingenieria de Software/BackendCasaKetteler/ProjectCasaKetteler/temp
+
 
 ========================================
 RUTA: src/test/java/com/epiis/projectcasaketteler/ProjectcasakettelerApplicationTests.java
@@ -5377,6 +5625,7 @@ from flask import Flask, request, jsonify
 import base64
 import uuid
 import json
+import sys
 
 app = Flask(__name__)
 
@@ -5511,7 +5760,9 @@ def verificar():
     temp_path = None
     try:
         image_bytes = base64.b64decode(imagen_base64)
-        temp_dir = "temp/"
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        temp_dir = os.path.join(BASE_DIR, "..", "temp")
+
         os.makedirs(temp_dir, exist_ok=True)
         temp_filename = f"srv_{id_user}_{uuid.uuid4().hex[:8]}.jpg"
         temp_path = os.path.join(temp_dir, temp_filename)

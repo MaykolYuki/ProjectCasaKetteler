@@ -344,12 +344,12 @@ public class BusinessUser {
 		Map<String, Object> res = new HashMap<>();
 		ResponseUserGetById response = new ResponseUserGetById();
 
+		// Buscar primero en usuarios
 		Optional<EntityUser> entityUser = repositoryUser.findById(userId);
 
 		if (entityUser.isPresent()) {
 			EntityUser user = entityUser.get();
 
-			// Datos del usuario
 			Map<String, Object> userData = new HashMap<>();
 			userData.put("idUser", user.getIdUser());
 			userData.put("firstName", user.getFirstName());
@@ -361,7 +361,6 @@ public class BusinessUser {
 			userData.put("active", user.getActive());
 			userData.put("firstLogin", user.getFirstLogin());
 
-			// Datos de residencia — esto es lo que faltaba
 			if (user.getParentResidence() != null) {
 				userData.put("idResidence", user.getParentResidence().getIdResidence());
 				userData.put("residenceName", user.getParentResidence().getName());
@@ -371,13 +370,40 @@ public class BusinessUser {
 			response.getListMessage().add("Perfil obtenido correctamente");
 			res.put("message", response);
 			res.put("data", userData);
-		} else {
-			response.setType("error");
-			response.getListMessage().add("Usuario no encontrado");
-			res.put("message", response);
-			res.put("data", null);
+			return res;
 		}
 
+		// Si no es usuario, buscar en admins
+		Optional<EntityAdmin> entityAdmin = repositoryAdmin.findById(userId);
+
+		if (entityAdmin.isPresent()) {
+			EntityAdmin admin = entityAdmin.get();
+
+			Map<String, Object> adminData = new HashMap<>();
+			adminData.put("idUser", admin.getIdAdmin());
+			adminData.put("firstName", admin.getFirstName());
+			adminData.put("surName", admin.getSurName());
+			adminData.put("email", admin.getEmail());
+			adminData.put("role", admin.getRole());
+			adminData.put("active", admin.getActive());
+
+			if (admin.getParentResidence() != null) {
+				adminData.put("idResidence", admin.getParentResidence().getIdResidence());
+				adminData.put("residenceName", admin.getParentResidence().getName());
+			}
+
+			response.setType("success");
+			response.getListMessage().add("Perfil obtenido correctamente");
+			res.put("message", response);
+			res.put("data", adminData);
+			return res;
+		}
+
+		// No encontrado en ninguna tabla
+		response.setType("error");
+		response.getListMessage().add("Usuario no encontrado");
+		res.put("message", response);
+		res.put("data", null);
 		return res;
 	}
 

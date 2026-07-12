@@ -14,6 +14,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
@@ -60,6 +61,7 @@ public class BusinessAttendanceExport {
                 inicio, fin, estado, null, pageable).getContent();
     }
 
+    @Transactional(readOnly = true)
     public byte[] exportarExcel(String idUser, String fechaInicio,
             String fechaFin, Boolean estado) throws Exception {
         List<EntityAttendance> registros = obtenerDatos(idUser, fechaInicio, fechaFin, estado);
@@ -119,6 +121,7 @@ public class BusinessAttendanceExport {
         }
     }
 
+    @Transactional(readOnly = true)
     public byte[] exportarPDF(String idUser, String fechaInicio,
             String fechaFin, Boolean estado) throws Exception {
         List<EntityAttendance> registros = obtenerDatos(idUser, fechaInicio, fechaFin, estado);

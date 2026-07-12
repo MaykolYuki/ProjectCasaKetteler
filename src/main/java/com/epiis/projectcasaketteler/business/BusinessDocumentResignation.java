@@ -179,4 +179,98 @@ public class BusinessDocumentResignation {
 		java.nio.file.Path path = java.nio.file.Paths.get(filePath);
 		return new org.springframework.core.io.UrlResource(path.toUri());
 	}
+
+	// RF-25: Admin sube formato en blanco de renuncia y lo asigna al residente
+	public ResponseDocumentResignationInsert assignFormat(String idUser, MultipartFile file) throws Exception {
+		ResponseDocumentResignationInsert response = new ResponseDocumentResignationInsert();
+
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Error: Usuario no encontrado");
+			return response;
+		}
+		EntityUser entityUser = optional.get();
+
+		if (file == null || file.isEmpty()) {
+			response.error();
+			response.getListMessage().add("Error: No se ha adjuntado ningún archivo o está vacío");
+			return response;
+		}
+
+		String validationError = documentValidationHelper.validate(file);
+		if (validationError != null) {
+			response.error();
+			response.getListMessage().add("Error: " + validationError);
+			return response;
+		}
+
+		Path storagePath = Paths.get(storageDir + "/ResignationFormat/" + entityUser.getIdUser());
+		if (!Files.exists(storagePath)) {
+			Files.createDirectories(storagePath);
+		}
+
+		String originalFileName = file.getOriginalFilename();
+		String extension = "";
+		if (originalFileName != null && originalFileName.contains(".")) {
+			extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
+		}
+
+		String fileNameUUID = UUID.randomUUID().toString();
+		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+
+		Path filePath = storagePath.resolve(filePhysicalName);
+		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+		// Buscar si ya existe un registro de renuncia para este usuario, o crear uno
+		// nuevo
+		Optional<EntityDocumentResignation> existing = repositoryDocumentResignation
+				.findTopByParentUserOrderByCreated_atDesc(entityUser);
+
+		EntityDocumentResignation entity;
+		if (existing.isPresent() && existing.get().getNameDocumentResignation() == null) {
+			// Reutilizar registro si aún no tiene renuncia subida por el residente
+			entity = existing.get();
+		} else {
+			entity = new EntityDocumentResignation();
+			entity.setIdDocumentResignation(UUID.randomUUID().toString());
+			entity.setParentUser(entityUser);
+			entity.setStatus(EntityDocumentResignation.ResignationStatus.PENDIENTE);
+			entity.setCreated_at(new java.sql.Date(new Date().getTime()));
+		}
+
+		entity.setFormatFileName(filePhysicalName);
+		entity.setFormatExtension(extension);
+		entity.setFormatAssignedAt(new Date());
+		entity.setUpdated_at(new java.sql.Date(new Date().getTime()));
+
+		repositoryDocumentResignation.save(entity);
+
+		response.success();
+		response.getListMessage().add("Formato de renuncia asignado correctamente");
+		return response;
+	}
+
+	// RF-26: Residente descarga el formato asignado por admin
+	public org.springframework.core.io.Resource downloadFormat(String idUser) throws Exception {
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+		if (!optional.isPresent()) {
+			throw new RuntimeException("Usuario no encontrado");
+		}
+		EntityUser entityUser = optional.get();
+
+		Optional<EntityDocumentResignation> doc = repositoryDocumentResignation
+				.findTopByParentUserOrderByCreated_atDesc(entityUser);
+
+		if (!doc.isPresent() || doc.get().getFormatFileName() == null) {
+			throw new RuntimeException("No hay formato de renuncia asignado");
+		}
+
+		String filePath = storageDir + "/ResignationFormat/" +
+				entityUser.getIdUser() + "/" +
+				doc.get().getFormatFileName();
+
+		java.nio.file.Path path = java.nio.file.Paths.get(filePath);
+		return new org.springframework.core.io.UrlResource(path.toUri());
+	}
 }

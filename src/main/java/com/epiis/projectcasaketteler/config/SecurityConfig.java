@@ -60,8 +60,15 @@ public class SecurityConfig {
 								"/casaketteler/updateuser/**",
 								"/casaketteler/resetpassword/**",
 								"/casaketteler/registerphoto",
-								"/casaketteler/documents/**", // listar y descargar documentos
-								"/casaketteler/resignation/**", // gestión renuncia admin
+								"/casaketteler/documents/*", // admin: listar documentos de un residente
+																// (documents/{idUser})
+								"/casaketteler/documents/*/status", // admin: cambiar estado de un documento
+								"/casaketteler/resignation/*", // admin: ver renuncia de un residente
+																// (resignation/{idUser})
+								"/casaketteler/resignation/*/status", // admin: cambiar estado de una renuncia
+								"/casaketteler/resignation/download/*", // admin: descargar la renuncia subida por el
+																		// residente
+								"/casaketteler/assignresignation", // admin: asignar formato de renuncia
 								"/casaketteler/attendance/filter",
 								"/casaketteler/attendance/export",
 								"/casaketteler/attendance/kpi")
