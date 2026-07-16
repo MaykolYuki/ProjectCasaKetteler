@@ -6,7 +6,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -83,15 +82,25 @@ public class BusinessDocumentResignation {
 		Path filePath = storagePath.resolve(filePhysicalName);
 		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
 
-		EntityDocumentResignation entityDocumentResignation = new EntityDocumentResignation();
+		// Reutilizar el registro existente (p. ej. si el admin ya asignó el formato) en
+		// vez de duplicar
+		Optional<EntityDocumentResignation> existing = repositoryDocumentResignation
+				.findTopByParentUserOrderByCreated_atDesc(entityUser);
 
-		entityDocumentResignation.setIdDocumentResignation(fileNameUUID);
-		entityDocumentResignation.setParentUser(entityUser);
+		EntityDocumentResignation entityDocumentResignation;
+		if (existing.isPresent() && existing.get().getNameDocumentResignation() == null) {
+			entityDocumentResignation = existing.get();
+		} else {
+			entityDocumentResignation = new EntityDocumentResignation();
+			entityDocumentResignation.setIdDocumentResignation(fileNameUUID);
+			entityDocumentResignation.setParentUser(entityUser);
+			entityDocumentResignation.setCreated_at(new java.sql.Date(new Date().getTime()));
+		}
+
 		entityDocumentResignation.setNameDocumentResignation(filePhysicalName);
 		entityDocumentResignation.setExtensionDocumentResignation(extension);
 		entityDocumentResignation.setStatus(EntityDocumentResignation.ResignationStatus.PENDIENTE);
-		entityDocumentResignation.setCreated_at(new java.sql.Date(new Date().getTime()));
-		entityDocumentResignation.setUpdated_at(entityDocumentResignation.getCreated_at());
+		entityDocumentResignation.setUpdated_at(new java.sql.Date(new Date().getTime()));
 
 		repositoryDocumentResignation.save(entityDocumentResignation);
 
@@ -103,7 +112,6 @@ public class BusinessDocumentResignation {
 
 	public Map<String, Object> getByUser(String idUser) {
 		Map<String, Object> res = new HashMap<>();
-
 		Optional<EntityUser> optional = repositoryUser.findById(idUser);
 		if (!optional.isPresent()) {
 			res.put("type", "error");
@@ -112,12 +120,12 @@ public class BusinessDocumentResignation {
 			return res;
 		}
 
-		List<EntityDocumentResignation> docs = repositoryDocumentResignation
-				.findByParentUserOrderByCreated_atDesc(optional.get());
+		Optional<EntityDocumentResignation> doc = repositoryDocumentResignation
+				.findTopByParentUserOrderByCreated_atDesc(optional.get());
 
 		res.put("type", "success");
-		res.put("message", "Renuncias obtenidas correctamente");
-		res.put("data", docs);
+		res.put("message", "Renuncia obtenida correctamente");
+		res.put("data", doc.orElse(null));
 		return res;
 	}
 

@@ -72,4 +72,11 @@ public class DocumentGeneralController {
 						"attachment; filename=\"" + resource.getFilename() + "\"")
 				.body(resource);
 	}
+
+	@GetMapping(path = "mydocuments/all")
+	public ResponseEntity<Map<String, Object>> getMyAllDocuments(
+			@RequestHeader("Authorization") String token) {
+		String userId = jwtHelper.extractUserId(token.substring(7));
+		return ResponseEntity.ok(businessDocumentGeneral.getByUser(userId, null));
+	}
 }

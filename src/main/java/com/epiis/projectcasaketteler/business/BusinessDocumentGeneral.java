@@ -194,6 +194,10 @@ public class BusinessDocumentGeneral {
 		EntityDocumentGeneral doc = optional.get();
 		doc.setStatus(EntityDocumentGeneral.DocumentStatus.valueOf(status));
 		doc.setObservations(observations);
+
+		if ("APROBADO".equals(status)) {
+			doc.setDownloadable(true);
+		}
 		doc.setUpdated_at(new java.sql.Date(new Date().getTime()));
 
 		repositoryDocumentGeneral.save(doc);
