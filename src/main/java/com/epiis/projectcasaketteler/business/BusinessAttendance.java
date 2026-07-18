@@ -86,18 +86,8 @@ public class BusinessAttendance {
             ResponseFaceVerification responsetoPython = pythonFaceRecognitionHelper.verificarRostro(
                     rutaImagen, request.getIdUser(), entityUser.getBestPhotoReference());
 
-            // RF-12: se usa el 'verified' calibrado por el propio modelo (ArcFace),
-            // no un porcentaje fijo arbitrario. Python ya trae este valor calculado
-            // con su umbral interno de distancia; aquí solo lo respetamos.
-            if (!responsetoPython.isVerified()) {
-                responsetoPython.error();
-                responsetoPython.getListMessage().add(
-                        "Error: Rostro no reconocido. Similitud: " +
-                                String.format("%.1f", responsetoPython.getSimilarity()) + "%.");
-                return responsetoPython;
-            }
-
-            responsetoPython.setVerified(true);
+            // RF-12: verificación calibrada del modelo (verified de ArcFace)
+            boolean identidadValida = responsetoPython.isVerified();
 
             // RF-13/14: Validación de red por BSSID (preferido) o SSID (fallback)
             String expectedBSSID = entityUser.getParentResidence().getWifiBssid();
@@ -106,74 +96,105 @@ public class BusinessAttendance {
             String providedSSID = request.getSsid();
 
             boolean redValida = false;
+            boolean redConfigurada = true;
 
             if (expectedBSSID != null && !expectedBSSID.isEmpty()) {
-                // Si la residencia tiene BSSID configurado, es obligatorio que coincida
                 redValida = providedBSSID != null && expectedBSSID.equalsIgnoreCase(providedBSSID);
             } else if (expectedSSID != null && !expectedSSID.isEmpty()) {
-                // Fallback a SSID si no hay BSSID configurado
                 redValida = providedSSID != null && expectedSSID.equals(providedSSID);
             } else {
+                redConfigurada = false;
+            }
+
+            if (!redConfigurada) {
                 response.error();
                 response.getListMessage().add("Error: La residencia no tiene una red WiFi configurada.");
                 return response;
             }
 
-            if (!redValida) {
-                response.error();
-                response.getListMessage().add("Error: Conéctese a la red oficial de la residencia.");
-                return response;
+            // Si falla identidad o red, registrar INTENTO_FALLIDO (con anti-spam)
+            if (!identidadValida || !redValida) {
+                String motivo = !identidadValida
+                        ? "Rostro no reconocido (similitud: " + String.format("%.1f", responsetoPython.getSimilarity())
+                                + "%)"
+                        : "Red no autorizada";
+
+                registrarIntentoFallido(entityUser, motivo, providedSSID, providedBSSID,
+                        responsetoPython.getSimilarity(), request.getDescription());
+
+                responsetoPython.setVerified(identidadValida);
+                responsetoPython.error();
+                responsetoPython.getListMessage().add(
+                        !identidadValida
+                                ? "Error: Rostro no reconocido. Similitud: "
+                                        + String.format("%.1f", responsetoPython.getSimilarity()) + "%."
+                                : "Error: Conéctese a la red oficial de la residencia.");
+                return responsetoPython;
             }
 
-            Optional<EntityAttendance> optionalAttendance = repositoryAttendance
-                    .findTopByParentUserOrderByCreated_atDesc(entityUser);
+            responsetoPython.setVerified(true);
 
-            // RF-10: cooldown de 5 minutos entre registros
-            if (optionalAttendance.isPresent()) {
-                EntityAttendance lastAttendance = optionalAttendance.get();
+            // RF-10: cooldown de 5 minutos entre eventos exitosos
+            Optional<EntityAttendance> optionalLast = repositoryAttendance
+                    .findTopByParentUserOrderByEventTimestampDesc(entityUser);
 
-                Date lastTime = lastAttendance.getCreated_at();
-                long diffMinutes = (new Date().getTime() - lastTime.getTime()) / (1000 * 60);
-
-                if (diffMinutes < 5) {
-                    long restante = 5 - diffMinutes;
-                    responsetoPython.error();
-                    responsetoPython.getListMessage().add(
-                            "Error: Debes esperar " + restante + " minuto(s) para registrar nuevamente.");
-                    return responsetoPython;
+            if (optionalLast.isPresent()) {
+                EntityAttendance last = optionalLast.get();
+                if (last.getEventType() != EntityAttendance.AttendanceEventType.INTENTO_FALLIDO) {
+                    long diffMinutes = (new Date().getTime() - last.getEventTimestamp().getTime()) / (1000 * 60);
+                    if (diffMinutes < 5) {
+                        long restante = 5 - diffMinutes;
+                        responsetoPython.error();
+                        responsetoPython.getListMessage().add(
+                                "Error: Debes esperar " + restante + " minuto(s) para registrar nuevamente.");
+                        return responsetoPython;
+                    }
                 }
             }
 
-            if (optionalAttendance.isPresent()) {
-                EntityAttendance lastAttendance = optionalAttendance.get();
+            // Determinar tipo de evento según el estado de presencia
+            boolean estabaPresente = Boolean.TRUE.equals(entityUser.getPresente());
+            EntityAttendance.AttendanceEventType tipoEvento = estabaPresente
+                    ? EntityAttendance.AttendanceEventType.SALIDA
+                    : EntityAttendance.AttendanceEventType.ENTRADA;
 
-                if (lastAttendance.getStatus()) {
-                    lastAttendance.setDepartureDate(new java.sql.Date(new Date().getTime()));
-                    lastAttendance.setStatus(false);
-                    lastAttendance.setUpdated_at(new java.sql.Date(new Date().getTime()));
-
-                    repositoryAttendance.save(lastAttendance);
-
-                    responsetoPython.setEntrada(false);
-                    responsetoPython.success();
-                    responsetoPython.getListMessage().add("Salida registrada correctamente.");
-                    return responsetoPython;
+            // Detección de anomalía: dos salidas o dos entradas seguidas
+            boolean esAnomalia = false;
+            if (optionalLast.isPresent()) {
+                EntityAttendance last = optionalLast.get();
+                if (last.getEventType() == tipoEvento) {
+                    esAnomalia = true;
                 }
             }
 
-            EntityAttendance newAttendance = new EntityAttendance();
-            newAttendance.setIdAtendance(UUID.randomUUID().toString());
-            newAttendance.setParentUser(entityUser);
-            newAttendance.setEntryDate(new java.sql.Date(new Date().getTime()));
-            newAttendance.setStatus(true);
-            newAttendance.setDescription(request.getDescription());
-            newAttendance.setCreated_at(new java.sql.Date(new Date().getTime()));
+            EntityAttendance evento = new EntityAttendance();
+            evento.setIdAtendance(UUID.randomUUID().toString());
+            evento.setParentUser(entityUser);
+            evento.setEventTimestamp(new Date());
+            evento.setEventType(tipoEvento);
+            evento.setEsAnomalia(esAnomalia);
+            evento.setDescription(request.getDescription());
+            evento.setSsid(providedSSID);
+            evento.setBssid(providedBSSID);
+            evento.setServerSimilarity(responsetoPython.getSimilarity());
+            evento.setCreated_at(new Date());
 
-            repositoryAttendance.save(newAttendance);
+            repositoryAttendance.save(evento);
 
-            responsetoPython.setEntrada(true);
+            // Actualizar el estado de presencia del residente
+            entityUser.setPresente(tipoEvento == EntityAttendance.AttendanceEventType.ENTRADA);
+            repositoryUser.save(entityUser);
+
+            responsetoPython.setEntrada(tipoEvento == EntityAttendance.AttendanceEventType.ENTRADA);
             responsetoPython.success();
-            responsetoPython.getListMessage().add("Entrada registrada correctamente.");
+
+            String mensajeExito = tipoEvento == EntityAttendance.AttendanceEventType.ENTRADA
+                    ? "Entrada registrada correctamente."
+                    : "Salida registrada correctamente.";
+            if (esAnomalia) {
+                mensajeExito += " (Registro marcado como anomalía para revisión del administrador.)";
+            }
+            responsetoPython.getListMessage().add(mensajeExito);
             return responsetoPython;
 
         } catch (Exception e) {
@@ -419,5 +440,31 @@ public class BusinessAttendance {
 
     public PythonFaceRecognitionHelper getPythonFaceRecognitionHelper() {
         return pythonFaceRecognitionHelper;
+    }
+
+    private void registrarIntentoFallido(EntityUser user, String motivo, String ssid, String bssid,
+            double similarity, String description) {
+        // Anti-spam: no registrar si ya hay un intento fallido en los últimos 2 minutos
+        Optional<EntityAttendance> ultimoFallo = repositoryAttendance.findLastFailedAttempt(user);
+        if (ultimoFallo.isPresent()) {
+            long diffMinutes = (new Date().getTime() - ultimoFallo.get().getEventTimestamp().getTime()) / (1000 * 60);
+            if (diffMinutes < 2) {
+                return; // ya hay un fallo reciente, no inundar la tabla
+            }
+        }
+
+        EntityAttendance fallido = new EntityAttendance();
+        fallido.setIdAtendance(UUID.randomUUID().toString());
+        fallido.setParentUser(user);
+        fallido.setEventTimestamp(new Date());
+        fallido.setEventType(EntityAttendance.AttendanceEventType.INTENTO_FALLIDO);
+        fallido.setEsAnomalia(true); // todo intento fallido es una anomalía a revisar
+        fallido.setMotivoFallo(motivo);
+        fallido.setSsid(ssid);
+        fallido.setBssid(bssid);
+        fallido.setServerSimilarity(similarity);
+        fallido.setDescription(description);
+        fallido.setCreated_at(new Date());
+        repositoryAttendance.save(fallido);
     }
 }

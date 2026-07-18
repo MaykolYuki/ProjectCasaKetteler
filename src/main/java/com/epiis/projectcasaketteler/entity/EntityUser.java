@@ -74,6 +74,12 @@ public class EntityUser {
 	@Column(name = "firstLogin")
 	private Boolean firstLogin = true;
 
+	// Estado de presencia física: true = dentro de la residencia.
+	// Arranca en true (el residente empieza dentro). Se actualiza con
+	// cada evento de asistencia: ENTRADA -> true, SALIDA -> false.
+	@Column(name = "presente")
+	private Boolean presente = true;
+
 	@Column(name = "bestPhotoReference")
 	private String bestPhotoReference;
 

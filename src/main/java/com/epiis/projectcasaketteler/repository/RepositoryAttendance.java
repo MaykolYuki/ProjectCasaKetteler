@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
+import com.epiis.projectcasaketteler.entity.EntityAttendance.AttendanceEventType;
 import com.epiis.projectcasaketteler.entity.EntityUser;
 
 import java.util.Optional;
@@ -15,62 +16,55 @@ import java.util.List;
 
 public interface RepositoryAttendance extends JpaRepository<EntityAttendance, String> {
 
-	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :entityUser ORDER BY a.created_at DESC LIMIT 1")
-	Optional<EntityAttendance> findTopByParentUserOrderByCreated_atDesc(@Param("entityUser") EntityUser entityUser);
+	// Último evento de un usuario (para cooldown y detección de anomalías)
+	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :entityUser ORDER BY a.eventTimestamp DESC LIMIT 1")
+	Optional<EntityAttendance> findTopByParentUserOrderByEventTimestampDesc(@Param("entityUser") EntityUser entityUser);
 
-	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :user ORDER BY a.created_at DESC")
-	List<EntityAttendance> findByParentUserOrderByCreated_atDesc(@Param("user") EntityUser user);
+	// Último intento fallido reciente de un usuario (anti-spam)
+	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :entityUser " +
+			"AND a.eventType = com.epiis.projectcasaketteler.entity.EntityAttendance$AttendanceEventType.INTENTO_FALLIDO "
+			+
+			"ORDER BY a.eventTimestamp DESC LIMIT 1")
+	Optional<EntityAttendance> findLastFailedAttempt(@Param("entityUser") EntityUser entityUser);
 
+	// Historial de un residente (su propia asistencia)
 	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :user " +
-			"AND (:fechaInicio IS NULL OR a.created_at >= :fechaInicio) " +
-			"AND (:fechaFin IS NULL OR a.created_at <= :fechaFin) " +
-			"AND (:estado IS NULL OR a.status = :estado) " +
-			"ORDER BY a.created_at DESC")
+			"AND (:fechaInicio IS NULL OR a.eventTimestamp >= :fechaInicio) " +
+			"AND (:fechaFin IS NULL OR a.eventTimestamp <= :fechaFin) " +
+			"AND (:tipo IS NULL OR a.eventType = :tipo) " +
+			"ORDER BY a.eventTimestamp DESC")
 	Page<EntityAttendance> findByFilters(
 			@Param("user") EntityUser user,
 			@Param("fechaInicio") Date fechaInicio,
 			@Param("fechaFin") Date fechaFin,
-			@Param("estado") Boolean estado,
+			@Param("tipo") AttendanceEventType tipo,
 			Pageable pageable);
 
+	// Filtro admin sobre eventos, acotado por residencia
 	@Query("SELECT a FROM EntityAttendance a WHERE " +
-			"(:fechaInicio IS NULL OR a.created_at >= :fechaInicio) " +
-			"AND (:fechaFin IS NULL OR a.created_at <= :fechaFin) " +
-			"AND (:estado IS NULL OR a.status = :estado) " +
-			"AND (:idUser IS NULL OR a.parentUser.idUser = :idUser) " +
-			"ORDER BY a.created_at DESC")
-	Page<EntityAttendance> findByFiltersAdmin(
-			@Param("fechaInicio") Date fechaInicio,
-			@Param("fechaFin") Date fechaFin,
-			@Param("estado") Boolean estado,
-			@Param("idUser") String idUser,
-			Pageable pageable);
-
-	@Query("SELECT COUNT(DISTINCT a.parentUser.idUser) FROM EntityAttendance a " +
-			"WHERE a.status = true " +
-			"AND a.created_at >= :inicioDia AND a.created_at < :finDia " +
-			"AND (:idResidence IS NULL OR a.parentUser.parentResidence.idResidence = :idResidence)")
-	long countPresentesHoy(
-			@Param("inicioDia") Date inicioDia,
-			@Param("finDia") Date finDia,
-			@Param("idResidence") String idResidence);
-
-	@Query("SELECT a FROM EntityAttendance a WHERE " +
-			"(:fechaInicio IS NULL OR a.created_at >= :fechaInicio) " +
-			"AND (:fechaFin IS NULL OR a.created_at <= :fechaFin) " +
-			"AND (:estado IS NULL OR a.status = :estado) " +
+			"(:fechaInicio IS NULL OR a.eventTimestamp >= :fechaInicio) " +
+			"AND (:fechaFin IS NULL OR a.eventTimestamp <= :fechaFin) " +
+			"AND (:tipo IS NULL OR a.eventType = :tipo) " +
 			"AND (:idUser IS NULL OR a.parentUser.idUser = :idUser) " +
 			"AND (:idResidence IS NULL OR a.parentUser.parentResidence.idResidence = :idResidence) " +
-			"ORDER BY a.created_at DESC")
+			"ORDER BY a.eventTimestamp DESC")
 	Page<EntityAttendance> findByFiltersAdmin(
 			@Param("fechaInicio") Date fechaInicio,
 			@Param("fechaFin") Date fechaFin,
-			@Param("estado") Boolean estado,
+			@Param("tipo") AttendanceEventType tipo,
 			@Param("idUser") String idUser,
 			@Param("idResidence") String idResidence,
 			Pageable pageable);
 
-	default Optional<EntityAttendance> findLastAttendanceByUser(EntityUser user) {
-		return findTopByParentUserOrderByCreated_atDesc(user);
-	}
+	// Solo anomalías (panel de disciplina del admin)
+	@Query("SELECT a FROM EntityAttendance a WHERE a.esAnomalia = true " +
+			"AND (:fechaInicio IS NULL OR a.eventTimestamp >= :fechaInicio) " +
+			"AND (:fechaFin IS NULL OR a.eventTimestamp <= :fechaFin) " +
+			"AND (:idResidence IS NULL OR a.parentUser.parentResidence.idResidence = :idResidence) " +
+			"ORDER BY a.eventTimestamp DESC")
+	Page<EntityAttendance> findAnomalias(
+			@Param("fechaInicio") Date fechaInicio,
+			@Param("fechaFin") Date fechaFin,
+			@Param("idResidence") String idResidence,
+			Pageable pageable);
 }

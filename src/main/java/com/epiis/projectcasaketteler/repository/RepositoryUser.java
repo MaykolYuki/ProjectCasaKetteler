@@ -14,5 +14,9 @@ public interface RepositoryUser extends JpaRepository<EntityUser, String> {
 			"AND u.parentResidence.idResidence = :idResidence")
 	long countActivosByResidencia(@Param("idResidence") String idResidence);
 
+	@Query("SELECT COUNT(u) FROM EntityUser u WHERE u.active = true AND u.presente = true " +
+			"AND (:idResidence IS NULL OR u.parentResidence.idResidence = :idResidence)")
+	long countPresentesByResidencia(@Param("idResidence") String idResidence);
+
 	Optional<EntityUser> findByEmail(String email);
 }
