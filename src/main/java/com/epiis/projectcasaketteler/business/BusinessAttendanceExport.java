@@ -27,6 +27,7 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.epiis.projectcasaketteler.entity.EntityAdmin;
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
+import com.epiis.projectcasaketteler.entity.EntityAttendance.AttendanceEventType;
 import com.epiis.projectcasaketteler.entity.EntityUser;
 import com.epiis.projectcasaketteler.repository.RepositoryAdmin;
 import com.epiis.projectcasaketteler.repository.RepositoryAttendance;
@@ -56,10 +57,21 @@ public class BusinessAttendanceExport {
         return admin.getParentResidence().getIdResidence();
     }
 
+    private AttendanceEventType parseTipo(String tipo) {
+        if (tipo == null || tipo.isEmpty())
+            return null;
+        try {
+            return AttendanceEventType.valueOf(tipo);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private List<EntityAttendance> obtenerDatos(String adminId, String idUser, String fechaInicio,
-            String fechaFin, Boolean estado) {
+            String fechaFin, String tipo) {
         Date inicio = parseFecha(fechaInicio, false);
         Date fin = parseFecha(fechaFin, true);
+        AttendanceEventType tipoEvento = parseTipo(tipo);
 
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0,
                 Integer.MAX_VALUE);
@@ -68,25 +80,39 @@ public class BusinessAttendanceExport {
             Optional<EntityUser> optional = repositoryUser.findById(idUser);
             if (optional.isPresent()) {
                 return repositoryAttendance.findByFilters(
-                        optional.get(), inicio, fin, estado, pageable).getContent();
+                        optional.get(), inicio, fin, tipoEvento, pageable).getContent();
             }
             return List.of();
         }
 
         String idResidence = resolveResidenceScope(adminId, null);
         return repositoryAttendance.findByFiltersAdmin(
-                inicio, fin, estado, null, idResidence, pageable).getContent();
+                inicio, fin, tipoEvento, null, idResidence, pageable).getContent();
+    }
+
+    private String etiquetaTipo(EntityAttendance a) {
+        if (a.getEventType() == null)
+            return "";
+        switch (a.getEventType()) {
+            case ENTRADA:
+                return "Entrada";
+            case SALIDA:
+                return "Salida";
+            case INTENTO_FALLIDO:
+                return "Intento fallido";
+            default:
+                return a.getEventType().name();
+        }
     }
 
     @Transactional(readOnly = true)
     public byte[] exportarExcel(String adminId, String idUser, String fechaInicio,
-            String fechaFin, Boolean estado) throws Exception {
-        List<EntityAttendance> registros = obtenerDatos(adminId, idUser, fechaInicio, fechaFin, estado);
+            String fechaFin, String tipo) throws Exception {
+        List<EntityAttendance> registros = obtenerDatos(adminId, idUser, fechaInicio, fechaFin, tipo);
 
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
-            Sheet sheet = workbook.createSheet("Asistencias");
+            Sheet sheet = workbook.createSheet("Eventos de asistencia");
 
-            // Estilo encabezado
             CellStyle headerStyle = workbook.createCellStyle();
             org.apache.poi.ss.usermodel.Font headerFont = workbook.createFont();
             headerFont.setBold(true);
@@ -94,16 +120,15 @@ public class BusinessAttendanceExport {
             headerStyle.setFillForegroundColor(IndexedColors.LIGHT_BLUE.getIndex());
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
-            // Encabezados
             Row header = sheet.createRow(0);
-            String[] columnas = { "ID", "Residente", "Fecha Entrada", "Fecha Salida", "Estado", "Duración (min)" };
+            String[] columnas = { "ID", "Residente", "Fecha y hora", "Tipo", "Anomalía", "Motivo fallo",
+                    "Similitud (%)" };
             for (int i = 0; i < columnas.length; i++) {
                 Cell cell = header.createCell(i);
                 cell.setCellValue(columnas[i]);
                 cell.setCellStyle(headerStyle);
             }
 
-            // Datos
             int rowNum = 1;
             for (EntityAttendance a : registros) {
                 Row row = sheet.createRow(rowNum++);
@@ -113,21 +138,14 @@ public class BusinessAttendanceExport {
                                 ? a.getParentUser().getFirstName() + " " + a.getParentUser().getSurName()
                                 : "");
                 row.createCell(2).setCellValue(
-                        a.getEntryDate() != null ? a.getEntryDate().toString() : "");
-                row.createCell(3).setCellValue(
-                        a.getDepartureDate() != null ? a.getDepartureDate().toString() : "Abierta");
-                row.createCell(4).setCellValue(Boolean.TRUE.equals(a.getStatus()) ? "Entrada" : "Salida");
-
-                // Duración en minutos
-                if (a.getEntryDate() != null && a.getDepartureDate() != null) {
-                    long diff = (a.getDepartureDate().getTime() - a.getEntryDate().getTime()) / (1000 * 60);
-                    row.createCell(5).setCellValue(diff);
-                } else {
-                    row.createCell(5).setCellValue("-");
-                }
+                        a.getEventTimestamp() != null ? a.getEventTimestamp().toString() : "");
+                row.createCell(3).setCellValue(etiquetaTipo(a));
+                row.createCell(4).setCellValue(Boolean.TRUE.equals(a.getEsAnomalia()) ? "Sí" : "No");
+                row.createCell(5).setCellValue(a.getMotivoFallo() != null ? a.getMotivoFallo() : "");
+                row.createCell(6).setCellValue(
+                        a.getServerSimilarity() != null ? String.format("%.1f", a.getServerSimilarity()) : "");
             }
 
-            // Autoajustar columnas
             for (int i = 0; i < columnas.length; i++) {
                 sheet.autoSizeColumn(i);
             }
@@ -140,39 +158,34 @@ public class BusinessAttendanceExport {
 
     @Transactional(readOnly = true)
     public byte[] exportarPDF(String adminId, String idUser, String fechaInicio,
-            String fechaFin, Boolean estado) throws Exception {
-        List<EntityAttendance> registros = obtenerDatos(adminId, idUser, fechaInicio, fechaFin, estado);
+            String fechaFin, String tipo) throws Exception {
+        List<EntityAttendance> registros = obtenerDatos(adminId, idUser, fechaInicio, fechaFin, tipo);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Document document = new Document(PageSize.A4.rotate());
         PdfWriter.getInstance(document, out);
         document.open();
 
-        // Fuentes
         com.lowagie.text.Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16);
         com.lowagie.text.Font subFont = FontFactory.getFont(FontFactory.HELVETICA, 10);
         com.lowagie.text.Font headerFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
         com.lowagie.text.Font dataFont = FontFactory.getFont(FontFactory.HELVETICA, 9);
 
-        // Título
-        Paragraph title = new Paragraph("Reporte de Asistencias", titleFont);
+        Paragraph title = new Paragraph("Reporte de Eventos de Asistencia", titleFont);
         title.setAlignment(Element.ALIGN_CENTER);
         title.setSpacingAfter(20);
         document.add(title);
 
-        // Fecha de generación
         Paragraph fecha = new Paragraph("Generado: " + new Date().toString(), subFont);
         fecha.setAlignment(Element.ALIGN_RIGHT);
         fecha.setSpacingAfter(10);
         document.add(fecha);
 
-        // Tabla
         PdfPTable table = new PdfPTable(6);
         table.setWidthPercentage(100);
-        table.setWidths(new float[] { 3f, 4f, 4f, 4f, 2f, 2f });
+        table.setWidths(new float[] { 3f, 4f, 4f, 2.5f, 2f, 4f });
 
-        // Encabezados
-        String[] columnas = { "ID", "Residente", "Entrada", "Salida", "Estado", "Dur. (min)" };
+        String[] columnas = { "ID", "Residente", "Fecha y hora", "Tipo", "Anomalía", "Motivo fallo" };
         for (String col : columnas) {
             PdfPCell cell = new PdfPCell(new Phrase(col, headerFont));
             cell.setBackgroundColor(new java.awt.Color(173, 216, 230));
@@ -181,7 +194,6 @@ public class BusinessAttendanceExport {
             table.addCell(cell);
         }
 
-        // Datos
         for (EntityAttendance a : registros) {
             table.addCell(new Phrase(a.getIdAtendance().substring(0, 8) + "...", dataFont));
             table.addCell(new Phrase(
@@ -189,18 +201,10 @@ public class BusinessAttendanceExport {
                             : "",
                     dataFont));
             table.addCell(new Phrase(
-                    a.getEntryDate() != null ? a.getEntryDate().toString() : "", dataFont));
-            table.addCell(new Phrase(
-                    a.getDepartureDate() != null ? a.getDepartureDate().toString() : "Abierta", dataFont));
-            table.addCell(new Phrase(
-                    Boolean.TRUE.equals(a.getStatus()) ? "Entrada" : "Salida", dataFont));
-
-            if (a.getEntryDate() != null && a.getDepartureDate() != null) {
-                long diff = (a.getDepartureDate().getTime() - a.getEntryDate().getTime()) / (1000 * 60);
-                table.addCell(new Phrase(String.valueOf(diff), dataFont));
-            } else {
-                table.addCell(new Phrase("-", dataFont));
-            }
+                    a.getEventTimestamp() != null ? a.getEventTimestamp().toString() : "", dataFont));
+            table.addCell(new Phrase(etiquetaTipo(a), dataFont));
+            table.addCell(new Phrase(Boolean.TRUE.equals(a.getEsAnomalia()) ? "Sí" : "No", dataFont));
+            table.addCell(new Phrase(a.getMotivoFallo() != null ? a.getMotivoFallo() : "-", dataFont));
         }
 
         document.add(table);

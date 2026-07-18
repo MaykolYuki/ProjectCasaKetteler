@@ -13,10 +13,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
-import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
 import com.epiis.projectcasaketteler.dto.response.ResponseAttendancePage;
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
-import com.epiis.projectcasaketteler.dto.response.ResponseSyncResult;
 import com.epiis.projectcasaketteler.entity.EntityAdmin;
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
 import com.epiis.projectcasaketteler.entity.EntityUser;
@@ -209,103 +207,6 @@ public class BusinessAttendance {
         }
     }
 
-    /**
-     * NO USADO — ver nota en AttendanceController.sync(). Conservado por si
-     * se retoma el alcance offline en el futuro.
-     */
-    @Deprecated
-    public ResponseSyncResult syncOfflineRecords(String userId, List<RequestAttendanceSync> records) {
-        ResponseSyncResult result = new ResponseSyncResult();
-        result.setType("success");
-
-        for (RequestAttendanceSync record : records) {
-            String idUser = record.getIdUser();
-            String recordedAtStr = record.getRecordedAt() != null ? record.getRecordedAt().toString() : "desconocido";
-
-            try {
-                // 1. Buscar usuario
-                Optional<EntityUser> optionalUser = repositoryUser.findById(idUser);
-                if (!optionalUser.isPresent()) {
-                    result.agregarRechazado(idUser, recordedAtStr, "Usuario no encontrado");
-                    continue;
-                }
-                EntityUser entityUser = optionalUser.get();
-
-                // 2. Validar red por SSID/BSSID (opcional para offline)
-                if (record.getBssid() != null && !record.getBssid().isEmpty()) {
-                    String expectedBSSID = entityUser.getParentResidence().getWifiBssid();
-                    if (expectedBSSID == null || !expectedBSSID.equalsIgnoreCase(record.getBssid())) {
-                        result.agregarRechazado(idUser, recordedAtStr, "BSSID no corresponde a la red oficial");
-                        continue;
-                    }
-                } else if (record.getSsid() != null && !record.getSsid().isEmpty()) {
-                    String expectedSSID = entityUser.getParentResidence().getWifiSsid();
-                    if (expectedSSID == null || !expectedSSID.equals(record.getSsid())) {
-                        result.agregarRechazado(idUser, recordedAtStr, "SSID no corresponde a la red oficial");
-                        continue;
-                    }
-                }
-
-                // 3. Re-verificar con Python
-                ResponseFaceVerification serverResult = pythonFaceRecognitionHelper
-                        .verificarRostroBase64(
-                                record.getBase64Image(),
-                                idUser,
-                                entityUser.getBestPhotoReference());
-
-                if (!serverResult.isVerified()) {
-                    result.agregarRechazado(idUser, recordedAtStr,
-                            "Rostro no reconocido. Similitud: " +
-                                    String.format("%.1f", serverResult.getSimilarity()) + "%");
-                    continue;
-                }
-
-                // 4. Verificar duplicado
-                if (isDuplicateSync(entityUser, record.getRecordedAt())) {
-                    result.agregarRechazado(idUser, recordedAtStr,
-                            "Registro duplicado — ya existe uno en ±1 minuto");
-                    continue;
-                }
-
-                // 5. Guardar
-                EntityAttendance attendance = new EntityAttendance();
-                attendance.setIdAtendance(UUID.randomUUID().toString());
-                attendance.setParentUser(entityUser);
-                attendance.setRecordedAt(record.getRecordedAt());
-                attendance.setSyncedAt(new Date());
-                attendance.setClientSimilarity(record.getClientSimilarity());
-                attendance.setServerSimilarity(serverResult.getSimilarity());
-                attendance.setVerifiedByServer(true);
-                attendance.setStatus(record.getIsEntry());
-                attendance.setCreated_at(new Date());
-
-                repositoryAttendance.save(attendance);
-                result.agregarProcesado(idUser, recordedAtStr);
-
-            } catch (Exception e) {
-                result.agregarRechazado(idUser, recordedAtStr,
-                        "Error inesperado: " + e.getMessage());
-            }
-        }
-
-        return result;
-    }
-
-    private boolean isDuplicateSync(EntityUser user, Date recordedAt) {
-        List<EntityAttendance> recientes = repositoryAttendance
-                .findByParentUserOrderByCreated_atDesc(user);
-
-        for (EntityAttendance a : recientes) {
-            if (a.getRecordedAt() == null)
-                continue;
-            long diffMs = Math.abs(a.getRecordedAt().getTime() - recordedAt.getTime());
-            long diffMin = diffMs / (1000 * 60);
-            if (diffMin <= 1)
-                return true;
-        }
-        return false;
-    }
-
     public Map<String, Object> getByUser(String userId) {
         Map<String, Object> res = new HashMap<>();
 
@@ -321,7 +222,7 @@ public class BusinessAttendance {
         EntityUser entityUser = optionalUser.get();
 
         List<EntityAttendance> attendances = repositoryAttendance
-                .findByParentUserOrderByCreated_atDesc(entityUser);
+                .findByParentUserOrderByEventTimestampDesc(entityUser);
 
         res.put("type", "success");
         res.put("message", "Asistencias obtenidas correctamente");
@@ -332,7 +233,7 @@ public class BusinessAttendance {
 
     // RF-30/31: Residente consulta su propia asistencia con filtros y paginación
     public Map<String, Object> getByFilters(String userId, String fechaInicio, String fechaFin,
-            Boolean estado, int page, int size) {
+            String tipo, int page, int size) {
         Map<String, Object> res = new HashMap<>();
 
         Optional<EntityUser> optionalUser = repositoryUser.findById(userId);
@@ -345,11 +246,12 @@ public class BusinessAttendance {
         EntityUser user = optionalUser.get();
         Date inicio = parseFecha(fechaInicio, false);
         Date fin = parseFecha(fechaFin, true);
+        EntityAttendance.AttendanceEventType tipoEvento = parseTipo(tipo);
 
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
 
         org.springframework.data.domain.Page<EntityAttendance> resultado = repositoryAttendance.findByFilters(user,
-                inicio, fin, estado, pageable);
+                inicio, fin, tipoEvento, pageable);
 
         res.put("type", "success");
         res.put("message", "Asistencias obtenidas correctamente");
@@ -375,17 +277,18 @@ public class BusinessAttendance {
 
     // RF-30/31: Admin consulta asistencia de cualquier residente con filtros
     public Map<String, Object> getByFiltersAdmin(String adminId, String idUser, String fechaInicio,
-            String fechaFin, Boolean estado, int page, int size) {
+            String fechaFin, String tipo, int page, int size) {
         Map<String, Object> res = new HashMap<>();
 
         Date inicio = parseFecha(fechaInicio, false);
         Date fin = parseFecha(fechaFin, true);
         String idResidence = resolveResidenceScope(adminId, null);
+        EntityAttendance.AttendanceEventType tipoEvento = parseTipo(tipo);
 
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
 
         org.springframework.data.domain.Page<EntityAttendance> resultado = repositoryAttendance
-                .findByFiltersAdmin(inicio, fin, estado, idUser, idResidence, pageable);
+                .findByFiltersAdmin(inicio, fin, tipoEvento, idUser, idResidence, pageable);
 
         res.put("type", "success");
         res.put("message", "Asistencias obtenidas correctamente");
@@ -406,20 +309,21 @@ public class BusinessAttendance {
             totalResidentes = repositoryUser.countActivosByResidencia(idResidence);
         }
 
-        java.time.LocalDate hoy = java.time.LocalDate.now();
-        Date inicioDia = java.sql.Date.valueOf(hoy);
-        Date finDia = java.sql.Date.valueOf(hoy.plusDays(1));
-
-        long presentes = repositoryAttendance.countPresentesHoy(
-                inicioDia, finDia,
-                (idResidence == null || idResidence.isEmpty()) ? null : idResidence);
+        long presentes;
+        if (idResidence == null || idResidence.isEmpty()) {
+            presentes = repositoryUser.findAll().stream()
+                    .filter(u -> Boolean.TRUE.equals(u.getActive()) && Boolean.TRUE.equals(u.getPresente()))
+                    .count();
+        } else {
+            presentes = repositoryUser.countPresentesByResidencia(idResidence);
+        }
         long ausentes = totalResidentes - presentes;
 
         res.put("type", "success");
         res.put("totalResidentes", totalResidentes);
         res.put("presentes", presentes);
         res.put("ausentes", ausentes < 0 ? 0 : ausentes);
-        res.put("fecha", hoy.toString());
+        res.put("fecha", java.time.LocalDate.now().toString());
 
         return res;
     }
@@ -466,5 +370,15 @@ public class BusinessAttendance {
         fallido.setDescription(description);
         fallido.setCreated_at(new Date());
         repositoryAttendance.save(fallido);
+    }
+
+    private EntityAttendance.AttendanceEventType parseTipo(String tipo) {
+        if (tipo == null || tipo.isEmpty())
+            return null;
+        try {
+            return EntityAttendance.AttendanceEventType.valueOf(tipo);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

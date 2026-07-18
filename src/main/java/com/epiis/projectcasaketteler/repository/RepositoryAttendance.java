@@ -67,4 +67,7 @@ public interface RepositoryAttendance extends JpaRepository<EntityAttendance, St
 			@Param("fechaFin") Date fechaFin,
 			@Param("idResidence") String idResidence,
 			Pageable pageable);
+
+	@Query("SELECT a FROM EntityAttendance a WHERE a.parentUser = :user ORDER BY a.eventTimestamp DESC")
+	List<EntityAttendance> findByParentUserOrderByEventTimestampDesc(@Param("user") EntityUser user);
 }

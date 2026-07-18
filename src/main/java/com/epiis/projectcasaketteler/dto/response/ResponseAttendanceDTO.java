@@ -8,31 +8,27 @@ public class ResponseAttendanceDTO {
     private String idUser;
     private String firstName;
     private String surName;
-    private Date entryDate;
-    private Date departureDate;
-    private Boolean status;
-    private Date created_at;
-    private Date updated_at;
-    private Double clientSimilarity;
-    private Double serverSimilarity;
-    private Boolean verifiedByServer;
-    private Date recordedAt;
-    private Date syncedAt;
+    private Date eventTimestamp;
+    private String eventType;
+    private Boolean esAnomalia;
+    private String motivoFallo;
     private String description;
+    private String ssid;
+    private String bssid;
+    private Double serverSimilarity;
+    private Date created_at;
 
     public ResponseAttendanceDTO(EntityAttendance a) {
         this.idAtendance = a.getIdAtendance();
-        this.entryDate = a.getEntryDate();
-        this.departureDate = a.getDepartureDate();
-        this.status = a.getStatus();
-        this.created_at = a.getCreated_at();
-        this.updated_at = a.getUpdated_at();
-        this.clientSimilarity = a.getClientSimilarity();
-        this.serverSimilarity = a.getServerSimilarity();
-        this.verifiedByServer = a.getVerifiedByServer();
-        this.recordedAt = a.getRecordedAt();
-        this.syncedAt = a.getSyncedAt();
+        this.eventTimestamp = a.getEventTimestamp();
+        this.eventType = a.getEventType() != null ? a.getEventType().name() : null;
+        this.esAnomalia = a.getEsAnomalia();
+        this.motivoFallo = a.getMotivoFallo();
         this.description = a.getDescription();
+        this.ssid = a.getSsid();
+        this.bssid = a.getBssid();
+        this.serverSimilarity = a.getServerSimilarity();
+        this.created_at = a.getCreated_at();
 
         if (a.getParentUser() != null) {
             this.idUser = a.getParentUser().getIdUser();
@@ -57,47 +53,39 @@ public class ResponseAttendanceDTO {
         return surName;
     }
 
-    public Date getEntryDate() {
-        return entryDate;
+    public Date getEventTimestamp() {
+        return eventTimestamp;
     }
 
-    public Date getDepartureDate() {
-        return departureDate;
+    public String getEventType() {
+        return eventType;
     }
 
-    public Boolean getStatus() {
-        return status;
+    public Boolean getEsAnomalia() {
+        return esAnomalia;
     }
 
-    public Date getCreated_at() {
-        return created_at;
+    public String getMotivoFallo() {
+        return motivoFallo;
     }
 
-    public Date getUpdated_at() {
-        return updated_at;
+    public String getDescription() {
+        return description;
     }
 
-    public Double getClientSimilarity() {
-        return clientSimilarity;
+    public String getSsid() {
+        return ssid;
+    }
+
+    public String getBssid() {
+        return bssid;
     }
 
     public Double getServerSimilarity() {
         return serverSimilarity;
     }
 
-    public Boolean getVerifiedByServer() {
-        return verifiedByServer;
-    }
-
-    public Date getRecordedAt() {
-        return recordedAt;
-    }
-
-    public Date getSyncedAt() {
-        return syncedAt;
-    }
-
-    public String getDescription() {
-        return description;
+    public Date getCreated_at() {
+        return created_at;
     }
 }
