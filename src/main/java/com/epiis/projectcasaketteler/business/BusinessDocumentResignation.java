@@ -12,6 +12,7 @@ import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -19,6 +20,7 @@ import com.epiis.projectcasaketteler.dto.request.RequestDocumentResignationInser
 import com.epiis.projectcasaketteler.dto.response.ResponseDocumentResignationInsert;
 import com.epiis.projectcasaketteler.entity.EntityDocumentResignation;
 import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.exception.DocumentAccessException;
 import com.epiis.projectcasaketteler.helper.DocumentValidationHelper;
 import com.epiis.projectcasaketteler.repository.RepositoryDocumentResignation;
 import com.epiis.projectcasaketteler.repository.RepositoryUser;
@@ -88,7 +90,7 @@ public class BusinessDocumentResignation {
 				.findTopByParentUserOrderByCreated_atDesc(entityUser);
 
 		EntityDocumentResignation entityDocumentResignation;
-		if (existing.isPresent() && existing.get().getNameDocumentResignation() == null) {
+		if (existing.isPresent()) {
 			entityDocumentResignation = existing.get();
 		} else {
 			entityDocumentResignation = new EntityDocumentResignation();
@@ -173,17 +175,24 @@ public class BusinessDocumentResignation {
 		return response;
 	}
 
-	public org.springframework.core.io.Resource download(String idDocument) throws Exception {
+	public org.springframework.core.io.Resource download(String idDocument, String requesterId, String requesterRole)
+			throws Exception {
 		Optional<EntityDocumentResignation> optional = repositoryDocumentResignation.findById(idDocument);
 		if (!optional.isPresent()) {
-			throw new RuntimeException("Documento no encontrado");
+			throw new DocumentAccessException("Documento no encontrado", HttpStatus.NOT_FOUND);
 		}
 
 		EntityDocumentResignation doc = optional.get();
-		String filePath = storageDir + "/DocumentResignation/" +
-				doc.getParentUser().getIdUser() + "/" +
-				doc.getNameDocumentResignation();
+		String idUser = doc.getParentUser().getIdUser();
 
+		boolean esAdmin = "ADMIN".equals(requesterRole) || "SUPER_ADMIN".equals(requesterRole);
+		boolean esDueno = idUser.equals(requesterId);
+
+		if (!esAdmin && !esDueno) {
+			throw new DocumentAccessException("Acceso denegado: este documento no te pertenece", HttpStatus.FORBIDDEN);
+		}
+
+		String filePath = storageDir + "/DocumentResignation/" + idUser + "/" + doc.getNameDocumentResignation();
 		java.nio.file.Path path = java.nio.file.Paths.get(filePath);
 		return new org.springframework.core.io.UrlResource(path.toUri());
 	}
@@ -236,8 +245,7 @@ public class BusinessDocumentResignation {
 				.findTopByParentUserOrderByCreated_atDesc(entityUser);
 
 		EntityDocumentResignation entity;
-		if (existing.isPresent() && existing.get().getNameDocumentResignation() == null) {
-			// Reutilizar registro si aún no tiene renuncia subida por el residente
+		if (existing.isPresent()) {
 			entity = existing.get();
 		} else {
 			entity = new EntityDocumentResignation();

@@ -10,8 +10,29 @@ import base64
 import uuid
 import json
 import sys
+import re
 
 app = Flask(__name__)
+
+STORAGE_BASE = os.environ.get("STORAGE_PATH")
+ID_PATTERN = re.compile(r'^[a-zA-Z0-9\-]+$')
+
+def id_user_valido(id_user):
+    return bool(id_user) and bool(ID_PATTERN.match(id_user))
+
+
+def ruta_photo_usuario(id_user):
+    if not STORAGE_BASE:
+        raise ValueError("STORAGE_PATH no está configurado en el servidor")
+    if not id_user_valido(id_user):
+        raise ValueError("idUser inválido")
+    return os.path.realpath(os.path.join(STORAGE_BASE, "Photo", id_user))
+
+
+def es_ruta_segura(ruta, base_permitida):
+    ruta_real = os.path.realpath(ruta)
+    base_real = os.path.realpath(base_permitida)
+    return ruta_real == base_real or ruta_real.startswith(base_real + os.sep)
 
 print("=== Cargando modelos de reconocimiento facial... ===")
 try:
@@ -124,8 +145,19 @@ def health():
 def filtro():
     data = request.get_json()
     directorio = data.get("directorio")
-    if not directorio:
-        return jsonify({"success": False, "error": "Falta el campo directorio"})
+    id_user = data.get("idUser")
+
+    if not directorio or not id_user:
+        return jsonify({"success": False, "error": "Faltan campos requeridos"})
+
+    try:
+        carpeta_permitida = ruta_photo_usuario(id_user)
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)})
+
+    if not es_ruta_segura(directorio, carpeta_permitida):
+        return jsonify({"success": False, "error": "Directorio no permitido"})
+
     resultado = seleccionar_mejor_foto(directorio)
     return jsonify(resultado)
 
@@ -140,6 +172,16 @@ def verificar():
     if not ruta_referencia or not imagen_base64 or not id_user:
         return jsonify({"success": False, "verified": False, "similarity": 0.0,
                         "error": "Faltan campos requeridos"})
+
+    try:
+        carpeta_permitida = ruta_photo_usuario(id_user)
+    except ValueError as e:
+        return jsonify({"success": False, "verified": False, "similarity": 0.0,
+                        "error": str(e)})
+
+    if not es_ruta_segura(ruta_referencia, carpeta_permitida):
+        return jsonify({"success": False, "verified": False, "similarity": 0.0,
+                        "error": "Ruta de referencia no permitida"})
 
     temp_path = None
     try:
@@ -166,4 +208,4 @@ def verificar():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="127.0.0.1", port=5000, debug=False)

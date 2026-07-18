@@ -31,6 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+!.vscode/launch.json
 
 
 # Entornos virtuales de Python
@@ -53,3 +54,9 @@ __pycache__/
 storage/
 
 todo_el_codigo_proyecto.txt
+src/main/resources/application.properties
+src/main/resources/application-dev.properties
+src/main/resources/application-prod.properties
+
+# Archivos de configuración local con credenciales privadas
+.env

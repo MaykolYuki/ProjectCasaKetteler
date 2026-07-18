@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import com.epiis.projectcasaketteler.dto.request.RequestAdminInsert;
 import com.epiis.projectcasaketteler.dto.request.RequestAdminUpdate;
 import com.epiis.projectcasaketteler.dto.request.RequestAdminUpdatePassword;
+import com.epiis.projectcasaketteler.dto.request.RequestChangePassword;
 import com.epiis.projectcasaketteler.dto.response.ResponseAdminDeleteById;
 import com.epiis.projectcasaketteler.dto.response.ResponseAdminGetAll;
 import com.epiis.projectcasaketteler.dto.response.ResponseAdminGetById;
@@ -138,6 +139,7 @@ public class BusinessAdmin {
 			EntityAdmin entityAdmin = optional.get();
 
 			entityAdmin.setPassword(passwordEncoderHelper.passwordEncoder().encode(request.getPassword()));
+			entityAdmin.setTokenValidAfter(new Date());
 
 			repositoryAdmin.save(entityAdmin);
 
@@ -149,6 +151,33 @@ public class BusinessAdmin {
 		response.error();
 		response.getListMessage().add("Error la contraseña no registrada");
 
+		return response;
+	}
+
+	public ResponseAdminUpdatePassword changeMyPassword(String adminId, RequestChangePassword request) {
+		ResponseAdminUpdatePassword response = new ResponseAdminUpdatePassword();
+
+		Optional<EntityAdmin> optional = repositoryAdmin.findById(adminId);
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Administrador no encontrado");
+			return response;
+		}
+
+		EntityAdmin admin = optional.get();
+
+		if (!passwordEncoderHelper.passwordEncoder().matches(request.getOldPassword(), admin.getPassword())) {
+			response.error();
+			response.getListMessage().add("Contraseña actual incorrecta");
+			return response;
+		}
+
+		admin.setPassword(passwordEncoderHelper.passwordEncoder().encode(request.getNewPassword()));
+		admin.setTokenValidAfter(new Date());
+		repositoryAdmin.save(admin);
+
+		response.success();
+		response.getListMessage().add("Contraseña actualizada exitosamente");
 		return response;
 	}
 }

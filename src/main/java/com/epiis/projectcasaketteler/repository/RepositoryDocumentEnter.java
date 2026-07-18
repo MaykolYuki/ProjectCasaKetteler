@@ -11,4 +11,7 @@ public interface RepositoryDocumentEnter extends JpaRepository<EntityDocumentEnt
 
     @Query("SELECT d FROM EntityDocumentEnter d WHERE d.parentUser = :user ORDER BY d.created_at DESC")
     List<EntityDocumentEnter> findByParentUserOrderByCreated_atDesc(@Param("user") EntityUser user);
+
+    @Query("SELECT d FROM EntityDocumentEnter d WHERE d.parentUser = :user AND d.downloadable = true ORDER BY d.created_at DESC")
+    List<EntityDocumentEnter> findByParentUserAndDownloadableTrueOrderByCreated_atDesc(@Param("user") EntityUser user);
 }

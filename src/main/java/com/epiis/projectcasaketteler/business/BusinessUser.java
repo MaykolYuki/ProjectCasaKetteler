@@ -59,9 +59,12 @@ public class BusinessUser {
 		return passwordEncoderHelper.passwordEncoder();
 	}
 
+	private static final java.security.SecureRandom secureRandom = new java.security.SecureRandom();
+
 	// LOGIN CORREGIDO
 	public ResponseLogin login(RequestLogin request) {
 		ResponseLogin response = new ResponseLogin();
+		final String MENSAJE_GENERICO = "Credenciales incorrectas.";
 
 		try {
 			// PRIMERO: Buscar en ADMIN
@@ -70,7 +73,6 @@ public class BusinessUser {
 			if (adminOptional.isPresent()) {
 				EntityAdmin admin = adminOptional.get();
 
-				// Verificar si está bloqueado
 				if (admin.getLockedUntil() != null && admin.getLockedUntil().after(new Date())) {
 					long minutosRestantes = (admin.getLockedUntil().getTime() - new Date().getTime()) / (1000 * 60);
 					response.setType("error");
@@ -80,7 +82,7 @@ public class BusinessUser {
 
 				if (admin.getActive() == null || !admin.getActive()) {
 					response.setType("error");
-					response.getListMessage().add("Usuario desactivado");
+					response.getListMessage().add(MENSAJE_GENERICO);
 					return response;
 				}
 
@@ -95,13 +97,13 @@ public class BusinessUser {
 						admin.setLoginAttempts(0);
 						repositoryAdmin.save(admin);
 						response.setType("error");
-						response.getListMessage().add("Cuenta bloqueada por 15 minutos tras 5 intentos fallidos.");
+						response.getListMessage().add("Cuenta bloqueada. Intente en 15 minuto(s).");
 						return response;
 					}
 
 					repositoryAdmin.save(admin);
 					response.setType("error");
-					response.getListMessage().add("Credenciales incorrectas. Intento " + intentos + " de 5.");
+					response.getListMessage().add(MENSAJE_GENERICO);
 					return response;
 				}
 
@@ -130,7 +132,6 @@ public class BusinessUser {
 			if (userOptional.isPresent()) {
 				EntityUser user = userOptional.get();
 
-				// Verificar si está bloqueado
 				if (user.getLockedUntil() != null && user.getLockedUntil().after(new Date())) {
 					long minutosRestantes = (user.getLockedUntil().getTime() - new Date().getTime()) / (1000 * 60);
 					response.setType("error");
@@ -140,7 +141,7 @@ public class BusinessUser {
 
 				if (user.getActive() == null || !user.getActive()) {
 					response.setType("error");
-					response.getListMessage().add("Usuario desactivado");
+					response.getListMessage().add(MENSAJE_GENERICO);
 					return response;
 				}
 
@@ -155,13 +156,13 @@ public class BusinessUser {
 						user.setLoginAttempts(0);
 						repositoryUser.save(user);
 						response.setType("error");
-						response.getListMessage().add("Cuenta bloqueada por 15 minutos tras 5 intentos fallidos.");
+						response.getListMessage().add("Cuenta bloqueada. Intente en 15 minuto(s).");
 						return response;
 					}
 
 					repositoryUser.save(user);
 					response.setType("error");
-					response.getListMessage().add("Credenciales incorrectas. Intento " + intentos + " de 5.");
+					response.getListMessage().add(MENSAJE_GENERICO);
 					return response;
 				}
 
@@ -186,7 +187,7 @@ public class BusinessUser {
 
 			// No encontrado en ninguna tabla
 			response.setType("error");
-			response.getListMessage().add("Credenciales incorrectas");
+			response.getListMessage().add(MENSAJE_GENERICO);
 			return response;
 
 		} catch (Exception e) {
@@ -268,6 +269,7 @@ public class BusinessUser {
 		user.setPassword(passwordEncoder().encode(nuevaTemporalPassword));
 		user.setFirstLogin(true);
 		user.setTemporalPassword(nuevaTemporalPassword);
+		user.setTokenValidAfter(new Date());
 
 		repositoryUser.save(user);
 
@@ -310,6 +312,7 @@ public class BusinessUser {
 		user.setPassword(passwordEncoder().encode(request.getNewPassword()));
 		user.setFirstLogin(false);
 		user.setTemporalPassword(null);
+		user.setTokenValidAfter(new Date());
 		repositoryUser.save(user);
 
 		response.setType("success");
@@ -534,7 +537,7 @@ public class BusinessUser {
 		String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$";
 		StringBuilder password = new StringBuilder();
 		for (int i = 0; i < 10; i++) {
-			int index = (int) (Math.random() * chars.length());
+			int index = secureRandom.nextInt(chars.length());
 			password.append(chars.charAt(index));
 		}
 		return password.toString();

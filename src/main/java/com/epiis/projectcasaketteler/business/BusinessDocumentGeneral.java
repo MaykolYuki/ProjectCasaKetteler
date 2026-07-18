@@ -23,6 +23,7 @@ import com.epiis.projectcasaketteler.dto.request.RequestDocumentGeneralInsert;
 import com.epiis.projectcasaketteler.dto.response.ResponseDocumentGeneralInsert;
 import com.epiis.projectcasaketteler.entity.EntityDocumentGeneral;
 import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.exception.DocumentAccessException;
 import com.epiis.projectcasaketteler.helper.DocumentValidationHelper;
 import com.epiis.projectcasaketteler.repository.RepositoryDocumentGeneral;
 import com.epiis.projectcasaketteler.repository.RepositoryUser;
@@ -207,17 +208,23 @@ public class BusinessDocumentGeneral {
 		return response;
 	}
 
-	public org.springframework.core.io.Resource download(String idDocument) throws Exception {
+	public org.springframework.core.io.Resource download(String idDocument, String requesterId, String requesterRole)
+			throws Exception {
 		Optional<EntityDocumentGeneral> optional = repositoryDocumentGeneral.findById(idDocument);
 		if (!optional.isPresent()) {
-			throw new RuntimeException("Documento no encontrado");
+			throw new DocumentAccessException("Documento no encontrado", HttpStatus.NOT_FOUND);
 		}
 
 		EntityDocumentGeneral doc = optional.get();
-
-		// Usar idUser en lugar de firstName para evitar problemas con
-		// espacios/caracteres
 		String idUser = doc.getParentUser().getIdUser();
+
+		boolean esAdmin = "ADMIN".equals(requesterRole) || "SUPER_ADMIN".equals(requesterRole);
+		boolean esDueno = idUser.equals(requesterId);
+
+		if (!esAdmin && !esDueno) {
+			throw new DocumentAccessException("Acceso denegado: este documento no te pertenece", HttpStatus.FORBIDDEN);
+		}
+
 		String filePath = storageDir + "/DocumentGeneral/" + idUser + "/" +
 				doc.getType() + "/" +
 				doc.getNameDocumentGeneral();
@@ -231,8 +238,14 @@ public class BusinessDocumentGeneral {
 		Map<String, Object> response = new HashMap<>();
 		response.put("type", "error");
 
-		String message = e.getMessage() != null && e.getMessage().contains("no encontrado")
-				? e.getMessage()
+		String msg = e.getMessage();
+		if (msg != null && msg.startsWith("Acceso denegado")) {
+			response.put("listMessage", java.util.List.of(msg));
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+		}
+
+		String message = msg != null && msg.contains("no encontrado")
+				? msg
 				: "El archivo solicitado no está disponible.";
 
 		response.put("listMessage", java.util.List.of(message));

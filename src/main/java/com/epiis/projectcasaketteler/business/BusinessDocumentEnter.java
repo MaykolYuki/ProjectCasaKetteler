@@ -5,11 +5,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -17,6 +21,7 @@ import com.epiis.projectcasaketteler.dto.request.RequestDocumentEnterInsert;
 import com.epiis.projectcasaketteler.dto.response.ResponseDocumentEnterInsert;
 import com.epiis.projectcasaketteler.entity.EntityDocumentEnter;
 import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.exception.DocumentAccessException;
 import com.epiis.projectcasaketteler.helper.DocumentValidationHelper;
 import com.epiis.projectcasaketteler.repository.RepositoryDocumentEnter;
 import com.epiis.projectcasaketteler.repository.RepositoryUser;
@@ -91,5 +96,90 @@ public class BusinessDocumentEnter {
 		response.getListMessage().add("Documento de Entrada Registrado Exitosamente");
 
 		return response;
+	}
+
+	public Map<String, Object> getByUser(String idUser) {
+		Map<String, Object> res = new HashMap<>();
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+		if (!optional.isPresent()) {
+			res.put("type", "error");
+			res.put("message", "Usuario no encontrado");
+			res.put("data", null);
+			return res;
+		}
+
+		List<EntityDocumentEnter> docs = repositoryDocumentEnter.findByParentUserOrderByCreated_atDesc(optional.get());
+
+		res.put("type", "success");
+		res.put("message", "Documentos de entrada obtenidos correctamente");
+		res.put("data", docs);
+		return res;
+	}
+
+	public Map<String, Object> getMyDownloadableDocuments(String idUser) {
+		Map<String, Object> res = new HashMap<>();
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+		if (!optional.isPresent()) {
+			res.put("type", "error");
+			res.put("message", "Usuario no encontrado");
+			res.put("data", null);
+			return res;
+		}
+
+		List<EntityDocumentEnter> docs = repositoryDocumentEnter
+				.findByParentUserAndDownloadableTrueOrderByCreated_atDesc(optional.get());
+
+		res.put("type", "success");
+		res.put("message", "Documentos descargables obtenidos correctamente");
+		res.put("data", docs);
+		return res;
+	}
+
+	public ResponseDocumentEnterInsert updateStatus(String idDocument, String status, String observations) {
+		ResponseDocumentEnterInsert response = new ResponseDocumentEnterInsert();
+
+		Optional<EntityDocumentEnter> optional = repositoryDocumentEnter.findById(idDocument);
+		if (!optional.isPresent()) {
+			response.error();
+			response.getListMessage().add("Error: Documento no encontrado");
+			return response;
+		}
+
+		EntityDocumentEnter doc = optional.get();
+		doc.setStatus(EntityDocumentEnter.DocumentEnterStatus.valueOf(status));
+		doc.setObservations(observations);
+
+		if ("APROBADO".equals(status)) {
+			doc.setDownloadable(true);
+		}
+		doc.setUpdated_at(new java.sql.Date(new Date().getTime()));
+
+		repositoryDocumentEnter.save(doc);
+
+		response.success();
+		response.getListMessage().add("Documento actualizado correctamente");
+		return response;
+	}
+
+	public org.springframework.core.io.Resource download(String idDocument, String requesterId, String requesterRole)
+			throws Exception {
+		Optional<EntityDocumentEnter> optional = repositoryDocumentEnter.findById(idDocument);
+		if (!optional.isPresent()) {
+			throw new DocumentAccessException("Documento no encontrado", HttpStatus.NOT_FOUND);
+		}
+
+		EntityDocumentEnter doc = optional.get();
+		String idUser = doc.getParentUser().getIdUser();
+
+		boolean esAdmin = "ADMIN".equals(requesterRole) || "SUPER_ADMIN".equals(requesterRole);
+		boolean esDueno = idUser.equals(requesterId);
+
+		if (!esAdmin && !esDueno) {
+			throw new DocumentAccessException("Acceso denegado: este documento no te pertenece", HttpStatus.FORBIDDEN);
+		}
+
+		String filePath = storageDir + "/DocumentEnter/" + idUser + "/" + doc.getNameDocumentEnter();
+		java.nio.file.Path path = java.nio.file.Paths.get(filePath);
+		return new org.springframework.core.io.UrlResource(path.toUri());
 	}
 }

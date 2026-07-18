@@ -22,6 +22,7 @@ import com.epiis.projectcasaketteler.dto.response.ResponsePhotoFilter;
 import com.epiis.projectcasaketteler.dto.response.ResponsePhotoInsert;
 import com.epiis.projectcasaketteler.entity.EntityPhoto;
 import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.helper.DocumentValidationHelper;
 import com.epiis.projectcasaketteler.helper.PythonFaceRecognitionHelper;
 import com.epiis.projectcasaketteler.repository.RepositoryPhoto;
 import com.epiis.projectcasaketteler.repository.RepositoryUser;
@@ -36,6 +37,9 @@ public class BusinessPhoto {
 
 	@Autowired
 	private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
+
+	@Autowired
+	private DocumentValidationHelper documentValidationHelper;
 
 	@Value("${app.storage.path}")
 	private String storageDir;
@@ -66,6 +70,14 @@ public class BusinessPhoto {
 				if (file.isEmpty())
 					continue;
 
+				String validationError = documentValidationHelper.validateImage(file);
+				if (validationError != null) {
+					response.error();
+					response.getListMessage()
+							.add("Error: " + validationError + " (archivo: " + file.getOriginalFilename() + ")");
+					return response;
+				}
+
 				String originalFileName = file.getOriginalFilename();
 				String extension = "";
 				if (originalFileName != null && originalFileName.contains(".")) {
@@ -93,7 +105,7 @@ public class BusinessPhoto {
 		List<Map<String, Object>> qualityReport = new ArrayList<>();
 
 		ResponsePhotoFilter filtro = pythonFaceRecognitionHelper
-				.seleccionarMejorFoto(storageDir + "/Photo/" + entityUser.getIdUser());
+				.seleccionarMejorFoto(storageDir + "/Photo/" + entityUser.getIdUser(), entityUser.getIdUser());
 
 		// GUARDAR la mejor foto en el usuario para reutilizarla después
 		if (filtro.isSuccess() && filtro.getBestImage() != null) {

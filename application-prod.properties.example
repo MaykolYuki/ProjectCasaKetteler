@@ -1,0 +1,15 @@
+# CONFIGURACIÓN DE BASE DE DATOS EN PRODUCCIÓN (EJEMPLO)
+# Nota: En producción no se usan valores por defecto (fallbacks) por seguridad
+spring.datasource.url=${DB_URL}
+spring.datasource.username=${DB_USERNAME}
+spring.datasource.password=${DB_PASSWORD}
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+# CONTROL ESTRICTO DE ESQUEMA EN PRODUCCIÓN
+spring.jpa.generate-ddl=false
+spring.jpa.hibernate.ddl-auto=validate
+spring.jpa.show-sql=false
+
+# ALMACENAMIENTO EN EL SERVIDOR
+app.storage.path=${APP_STORAGE_PATH}
+app.temp.path=${APP_TEMP_PATH}

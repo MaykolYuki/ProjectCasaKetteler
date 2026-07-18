@@ -55,6 +55,21 @@ public interface RepositoryAttendance extends JpaRepository<EntityAttendance, St
 			@Param("finDia") Date finDia,
 			@Param("idResidence") String idResidence);
 
+	@Query("SELECT a FROM EntityAttendance a WHERE " +
+			"(:fechaInicio IS NULL OR a.created_at >= :fechaInicio) " +
+			"AND (:fechaFin IS NULL OR a.created_at <= :fechaFin) " +
+			"AND (:estado IS NULL OR a.status = :estado) " +
+			"AND (:idUser IS NULL OR a.parentUser.idUser = :idUser) " +
+			"AND (:idResidence IS NULL OR a.parentUser.parentResidence.idResidence = :idResidence) " +
+			"ORDER BY a.created_at DESC")
+	Page<EntityAttendance> findByFiltersAdmin(
+			@Param("fechaInicio") Date fechaInicio,
+			@Param("fechaFin") Date fechaFin,
+			@Param("estado") Boolean estado,
+			@Param("idUser") String idUser,
+			@Param("idResidence") String idResidence,
+			Pageable pageable);
+
 	default Optional<EntityAttendance> findLastAttendanceByUser(EntityUser user) {
 		return findTopByParentUserOrderByCreated_atDesc(user);
 	}

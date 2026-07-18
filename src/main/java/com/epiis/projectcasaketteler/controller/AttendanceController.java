@@ -58,6 +58,14 @@ public class AttendanceController {
         return ResponseEntity.ok(businessAttendance.getByUser(userId));
     }
 
+    /**
+     * NO USADO — decisión de alcance (ver plan de desarrollo).
+     * El sistema está planteado para una sola residencia con red propia;
+     * no se contempla operación sin conexión. Este endpoint queda del diseño
+     * inicial pero el frontend nunca lo llama. Se conserva por si el alcance
+     * cambia más adelante, pero no debe considerarse una funcionalidad activa.
+     */
+    @Deprecated
     @PostMapping(path = "attendance/sync", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ResponseSyncResult> sync(
             @RequestHeader("Authorization") String token,
@@ -91,26 +99,30 @@ public class AttendanceController {
             @RequestParam(required = false) Boolean estado,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
+        String adminId = jwtHelper.extractUserId(token.substring(7));
         return ResponseEntity.ok(businessAttendance.getByFiltersAdmin(
-                idUser, fechaInicio, fechaFin, estado, page, size));
+                adminId, idUser, fechaInicio, fechaFin, estado, page, size));
     }
 
     @GetMapping(path = "attendance/export")
     public ResponseEntity<byte[]> exportar(
+            @RequestHeader("Authorization") String token,
             @RequestParam String format,
             @RequestParam(required = false) String idUser,
             @RequestParam(required = false) String fechaInicio,
             @RequestParam(required = false) String fechaFin,
             @RequestParam(required = false) Boolean estado) throws Exception {
 
+        String adminId = jwtHelper.extractUserId(token.substring(7));
+
         if ("excel".equalsIgnoreCase(format)) {
-            byte[] data = businessAttendanceExport.exportarExcel(idUser, fechaInicio, fechaFin, estado);
+            byte[] data = businessAttendanceExport.exportarExcel(adminId, idUser, fechaInicio, fechaFin, estado);
             return ResponseEntity.ok()
                     .header("Content-Disposition", "attachment; filename=\"asistencias.xlsx\"")
                     .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                     .body(data);
         } else if ("pdf".equalsIgnoreCase(format)) {
-            byte[] data = businessAttendanceExport.exportarPDF(idUser, fechaInicio, fechaFin, estado);
+            byte[] data = businessAttendanceExport.exportarPDF(adminId, idUser, fechaInicio, fechaFin, estado);
             return ResponseEntity.ok()
                     .header("Content-Disposition", "attachment; filename=\"asistencias.pdf\"")
                     .header("Content-Type", "application/pdf")
@@ -122,8 +134,10 @@ public class AttendanceController {
 
     @GetMapping(path = "attendance/kpi")
     public ResponseEntity<Map<String, Object>> getResumenKPI(
+            @RequestHeader("Authorization") String token,
             @RequestParam(required = false) String idResidence) {
-        return ResponseEntity.ok(businessAttendance.getResumenKPI(idResidence));
+        String adminId = jwtHelper.extractUserId(token.substring(7));
+        return ResponseEntity.ok(businessAttendance.getResumenKPI(adminId, idResidence));
     }
 
     @GetMapping(path = "attendance/health")

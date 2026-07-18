@@ -34,8 +34,6 @@ public class SecurityConfig {
 						// ============================================
 						.requestMatchers(
 								"/casaketteler/login",
-								"/casaketteler/registeruser",
-								"/casaketteler/registeradmin",
 								"/casaketteler/registerresidence",
 								"/casaketteler/indexresidence",
 								"/casaketteler/showresidence/**",
@@ -48,21 +46,31 @@ public class SecurityConfig {
 						// ============================================
 						// ENDPOINTS QUE SOLO SUPER_ADMIN
 						// ============================================
-						.requestMatchers("/casaketteler/deleteadmin/**").hasAuthority("SUPER_ADMIN")
+						.requestMatchers(
+								"/casaketteler/deleteadmin/**",
+								"/casaketteler/registeradmin",
+								"/casaketteler/updateadmin/**",
+								"/casaketteler/updatepasswordadmin/**")
+						.hasAuthority("SUPER_ADMIN")
 
 						// ============================================
 						// ENDPOINTS QUE SOLO ADMIN o SUPER_ADMIN
 						// ============================================
 						.requestMatchers(
 								"/casaketteler/indexadmin",
+								"/casaketteler/showadmin/**",
+								"/casaketteler/registeruser",
 								"/casaketteler/deactivateuser/**",
 								"/casaketteler/deleteuser/**",
 								"/casaketteler/updateuser/**",
+								"/casaketteler/updatepassworduser/**",
 								"/casaketteler/resetpassword/**",
 								"/casaketteler/registerphoto",
 								"/casaketteler/documents/*", // admin: listar documentos de un residente
 																// (documents/{idUser})
 								"/casaketteler/documents/*/status", // admin: cambiar estado de un documento
+								"/casaketteler/documententer/*", // admin: listar documentos de entrada de un residente
+								"/casaketteler/documententer/*/status", // admin: cambiar estado
 								"/casaketteler/resignation/*", // admin: ver renuncia de un residente
 																// (resignation/{idUser})
 								"/casaketteler/resignation/*/status", // admin: cambiar estado de una renuncia

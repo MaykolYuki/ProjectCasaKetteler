@@ -65,8 +65,12 @@ public class DocumentGeneralController {
 
 	@GetMapping(path = "documents/download/{idDocument}")
 	public ResponseEntity<org.springframework.core.io.Resource> download(
-			@PathVariable String idDocument) throws Exception {
-		org.springframework.core.io.Resource resource = businessDocumentGeneral.download(idDocument);
+			@PathVariable String idDocument,
+			@RequestHeader("Authorization") String token) throws Exception {
+		String requesterId = jwtHelper.extractUserId(token.substring(7));
+		String requesterRole = jwtHelper.extractRole(token.substring(7));
+		org.springframework.core.io.Resource resource = businessDocumentGeneral.download(idDocument, requesterId,
+				requesterRole);
 		return ResponseEntity.ok()
 				.header("Content-Disposition",
 						"attachment; filename=\"" + resource.getFilename() + "\"")

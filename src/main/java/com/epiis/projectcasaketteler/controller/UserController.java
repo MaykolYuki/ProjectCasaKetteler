@@ -3,6 +3,7 @@ package com.epiis.projectcasaketteler.controller;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,6 +30,8 @@ import com.epiis.projectcasaketteler.dto.response.ResponseUserInsert;
 import com.epiis.projectcasaketteler.dto.response.ResponseUserUpdate;
 import com.epiis.projectcasaketteler.dto.response.ResponseUserUpdatePassword;
 import com.epiis.projectcasaketteler.helper.JwtHelper;
+import com.epiis.projectcasaketteler.helper.LoginRateLimiterHelper;
+import com.epiis.projectcasaketteler.helper.ObtainIpAddressHelper;
 
 @RestController
 @RequestMapping(path = "casaketteler")
@@ -39,6 +42,12 @@ public class UserController {
 	@Autowired
 	private JwtHelper jwtHelper; // AGREGAR ESTO
 
+	@Autowired
+	private LoginRateLimiterHelper loginRateLimiterHelper;
+
+	@Autowired
+	private ObtainIpAddressHelper obtainIpAddressHelper;
+
 	@PostMapping(path = "registeruser", consumes = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<ResponseUserInsert> insert(@RequestBody RequestUserInsert request) {
 		ResponseUserInsert response = businessUser.insert(request);
@@ -47,7 +56,23 @@ public class UserController {
 
 	@PostMapping(path = "login", consumes = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<ResponseLogin> login(@RequestBody RequestLogin request) {
+		String ip = obtainIpAddressHelper.getIp();
+
+		if (loginRateLimiterHelper.estaBloqueada(ip)) {
+			ResponseLogin response = new ResponseLogin();
+			response.setType("error");
+			response.getListMessage().add("Demasiados intentos desde esta conexión. Intenta de nuevo más tarde.");
+			return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(response);
+		}
+
 		ResponseLogin response = businessUser.login(request);
+
+		if ("success".equals(response.getType())) {
+			loginRateLimiterHelper.registrarLoginExitoso(ip);
+		} else {
+			loginRateLimiterHelper.registrarIntentoFallido(ip);
+		}
+
 		return ResponseEntity.ok(response);
 	}
 

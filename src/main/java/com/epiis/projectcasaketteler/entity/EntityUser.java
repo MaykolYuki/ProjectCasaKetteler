@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -51,6 +52,7 @@ public class EntityUser {
 	private String email;
 
 	@Column(name = "password")
+	@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
 	private String password;
 
 	@Column(name = "cellPhoneNumber")
@@ -73,6 +75,7 @@ public class EntityUser {
 	private Boolean firstLogin = true;
 
 	@Column(name = "temporalPassword")
+	@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
 	private String temporalPassword;
 
 	@Column(name = "bestPhotoReference")
@@ -83,6 +86,9 @@ public class EntityUser {
 
 	@Column(name = "lockedUntil")
 	private Date lockedUntil;
+
+	@Column(name = "tokenValidAfter")
+	private Date tokenValidAfter;
 
 	@Column(name = "created_at")
 	private Date created_at;

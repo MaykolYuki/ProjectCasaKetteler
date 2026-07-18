@@ -17,9 +17,11 @@ import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
 import com.epiis.projectcasaketteler.dto.response.ResponseAttendancePage;
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
 import com.epiis.projectcasaketteler.dto.response.ResponseSyncResult;
+import com.epiis.projectcasaketteler.entity.EntityAdmin;
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
 import com.epiis.projectcasaketteler.entity.EntityUser;
 import com.epiis.projectcasaketteler.helper.PythonFaceRecognitionHelper;
+import com.epiis.projectcasaketteler.repository.RepositoryAdmin;
 import com.epiis.projectcasaketteler.repository.RepositoryAttendance;
 import com.epiis.projectcasaketteler.repository.RepositoryUser;
 
@@ -34,6 +36,9 @@ public class BusinessAttendance {
 
     @Autowired
     private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
+
+    @Autowired
+    private RepositoryAdmin repositoryAdmin;
 
     @Value("${app.temp.path}")
     private String tempPath;
@@ -181,6 +186,11 @@ public class BusinessAttendance {
         }
     }
 
+    /**
+     * NO USADO — ver nota en AttendanceController.sync(). Conservado por si
+     * se retoma el alcance offline en el futuro.
+     */
+    @Deprecated
     public ResponseSyncResult syncOfflineRecords(String userId, List<RequestAttendanceSync> records) {
         ResponseSyncResult result = new ResponseSyncResult();
         result.setType("success");
@@ -324,18 +334,35 @@ public class BusinessAttendance {
         return res;
     }
 
+    /**
+     * SUPER_ADMIN puede ver cualquier residencia (o todas, si no especifica).
+     * ADMIN normal queda forzado a su propia residencia sin importar qué pida.
+     */
+    private String resolveResidenceScope(String adminId, String requestedIdResidence) {
+        Optional<EntityAdmin> adminOpt = repositoryAdmin.findById(adminId);
+        if (!adminOpt.isPresent()) {
+            return requestedIdResidence;
+        }
+        EntityAdmin admin = adminOpt.get();
+        if (admin.getRole() == EntityAdmin.AdminRole.SUPER_ADMIN) {
+            return requestedIdResidence;
+        }
+        return admin.getParentResidence().getIdResidence();
+    }
+
     // RF-30/31: Admin consulta asistencia de cualquier residente con filtros
-    public Map<String, Object> getByFiltersAdmin(String idUser, String fechaInicio,
+    public Map<String, Object> getByFiltersAdmin(String adminId, String idUser, String fechaInicio,
             String fechaFin, Boolean estado, int page, int size) {
         Map<String, Object> res = new HashMap<>();
 
         Date inicio = parseFecha(fechaInicio, false);
         Date fin = parseFecha(fechaFin, true);
+        String idResidence = resolveResidenceScope(adminId, null);
 
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
 
         org.springframework.data.domain.Page<EntityAttendance> resultado = repositoryAttendance
-                .findByFiltersAdmin(inicio, fin, estado, idUser, pageable);
+                .findByFiltersAdmin(inicio, fin, estado, idUser, idResidence, pageable);
 
         res.put("type", "success");
         res.put("message", "Asistencias obtenidas correctamente");
@@ -343,10 +370,10 @@ public class BusinessAttendance {
         return res;
     }
 
-    public Map<String, Object> getResumenKPI(String idResidence) {
+    public Map<String, Object> getResumenKPI(String adminId, String idResidenceParam) {
         Map<String, Object> res = new HashMap<>();
+        String idResidence = resolveResidenceScope(adminId, idResidenceParam);
 
-        // Total de residentes activos por residencia
         long totalResidentes;
         if (idResidence == null || idResidence.isEmpty()) {
             totalResidentes = repositoryUser.findAll().stream()
@@ -356,7 +383,6 @@ public class BusinessAttendance {
             totalResidentes = repositoryUser.countActivosByResidencia(idResidence);
         }
 
-        // Presentes hoy — tienen una entrada abierta (status=true) creada hoy
         java.time.LocalDate hoy = java.time.LocalDate.now();
         Date inicioDia = java.sql.Date.valueOf(hoy);
         Date finDia = java.sql.Date.valueOf(hoy.plusDays(1));

@@ -25,9 +25,10 @@ import com.lowagie.text.Phrase;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
-
+import com.epiis.projectcasaketteler.entity.EntityAdmin;
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
 import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.repository.RepositoryAdmin;
 import com.epiis.projectcasaketteler.repository.RepositoryAttendance;
 import com.epiis.projectcasaketteler.repository.RepositoryUser;
 
@@ -40,7 +41,22 @@ public class BusinessAttendanceExport {
     @Autowired
     private RepositoryUser repositoryUser;
 
-    private List<EntityAttendance> obtenerDatos(String idUser, String fechaInicio,
+    @Autowired
+    private RepositoryAdmin repositoryAdmin;
+
+    private String resolveResidenceScope(String adminId, String requestedIdResidence) {
+        Optional<EntityAdmin> adminOpt = repositoryAdmin.findById(adminId);
+        if (!adminOpt.isPresent()) {
+            return requestedIdResidence;
+        }
+        EntityAdmin admin = adminOpt.get();
+        if (admin.getRole() == EntityAdmin.AdminRole.SUPER_ADMIN) {
+            return requestedIdResidence;
+        }
+        return admin.getParentResidence().getIdResidence();
+    }
+
+    private List<EntityAttendance> obtenerDatos(String adminId, String idUser, String fechaInicio,
             String fechaFin, Boolean estado) {
         Date inicio = parseFecha(fechaInicio, false);
         Date fin = parseFecha(fechaFin, true);
@@ -57,14 +73,15 @@ public class BusinessAttendanceExport {
             return List.of();
         }
 
+        String idResidence = resolveResidenceScope(adminId, null);
         return repositoryAttendance.findByFiltersAdmin(
-                inicio, fin, estado, null, pageable).getContent();
+                inicio, fin, estado, null, idResidence, pageable).getContent();
     }
 
     @Transactional(readOnly = true)
-    public byte[] exportarExcel(String idUser, String fechaInicio,
+    public byte[] exportarExcel(String adminId, String idUser, String fechaInicio,
             String fechaFin, Boolean estado) throws Exception {
-        List<EntityAttendance> registros = obtenerDatos(idUser, fechaInicio, fechaFin, estado);
+        List<EntityAttendance> registros = obtenerDatos(adminId, idUser, fechaInicio, fechaFin, estado);
 
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("Asistencias");
@@ -122,9 +139,9 @@ public class BusinessAttendanceExport {
     }
 
     @Transactional(readOnly = true)
-    public byte[] exportarPDF(String idUser, String fechaInicio,
+    public byte[] exportarPDF(String adminId, String idUser, String fechaInicio,
             String fechaFin, Boolean estado) throws Exception {
-        List<EntityAttendance> registros = obtenerDatos(idUser, fechaInicio, fechaFin, estado);
+        List<EntityAttendance> registros = obtenerDatos(adminId, idUser, fechaInicio, fechaFin, estado);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Document document = new Document(PageSize.A4.rotate());

@@ -47,11 +47,12 @@ public class PythonFaceRecognitionHelper {
         return response.body();
     }
 
-    public ResponsePhotoFilter seleccionarMejorFoto(String directorioUsuario) {
+    public ResponsePhotoFilter seleccionarMejorFoto(String directorioUsuario, String idUser) {
         try {
             File dir = new File(directorioUsuario);
             Map<String, Object> body = new HashMap<>();
             body.put("directorio", dir.getAbsolutePath());
+            body.put("idUser", idUser);
 
             String json = postJson("/filtro", body);
             return mapper.readValue(json, ResponsePhotoFilter.class);
@@ -73,7 +74,7 @@ public class PythonFaceRecognitionHelper {
             if (bestPhotoFileName != null && !bestPhotoFileName.isEmpty()) {
                 mejorFotoNombre = bestPhotoFileName;
             } else {
-                ResponsePhotoFilter filtro = seleccionarMejorFoto(directorioUsuario);
+                ResponsePhotoFilter filtro = seleccionarMejorFoto(directorioUsuario, idUser);
                 if (!filtro.isSuccess()) {
                     ResponseFaceVerification error = new ResponseFaceVerification();
                     error.setVerified(false);
