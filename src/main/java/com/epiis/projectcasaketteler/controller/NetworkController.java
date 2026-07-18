@@ -21,24 +21,6 @@ public class NetworkController {
     @Autowired
     private RepositoryResidence repositoryResidence;
 
-    // Este endpoint devuelve la configuración de red esperada
-    // El frontend debe comparar con el SSID real del dispositivo
-    @GetMapping(path = "network/config")
-    public ResponseEntity<Map<String, Object>> getNetworkConfig() {
-        Map<String, Object> response = new HashMap<>();
-        Map<String, String> data = new HashMap<>();
-
-        // Estos valores deben configurarse por administrador
-        data.put("expectedSSID", "CasaKetteler_WiFi"); // SSID esperado
-        data.put("networkType", "WIFI");
-
-        response.put("success", true);
-        response.put("data", data);
-        response.put("message", "Configuración de red obtenida");
-
-        return ResponseEntity.ok(response);
-    }
-
     // Endpoint para verificar si el SSID proporcionado es válido
     @GetMapping(path = "network/verify")
     public ResponseEntity<Map<String, Object>> verifyNetwork(

@@ -229,7 +229,6 @@ public class BusinessUser {
 			entityUser.setRole(UserRole.RESIDENTE);
 			entityUser.setActive(true);
 			entityUser.setFirstLogin(true);
-			entityUser.setTemporalPassword(temporalPassword);
 
 			repositoryUser.save(entityUser);
 			response.setTemporalPassword(temporalPassword);
@@ -268,7 +267,6 @@ public class BusinessUser {
 
 		user.setPassword(passwordEncoder().encode(nuevaTemporalPassword));
 		user.setFirstLogin(true);
-		user.setTemporalPassword(nuevaTemporalPassword);
 		user.setTokenValidAfter(new Date());
 
 		repositoryUser.save(user);
@@ -311,7 +309,6 @@ public class BusinessUser {
 
 		user.setPassword(passwordEncoder().encode(request.getNewPassword()));
 		user.setFirstLogin(false);
-		user.setTemporalPassword(null);
 		user.setTokenValidAfter(new Date());
 		repositoryUser.save(user);
 

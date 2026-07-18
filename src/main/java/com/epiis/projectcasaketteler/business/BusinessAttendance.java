@@ -86,15 +86,17 @@ public class BusinessAttendance {
             ResponseFaceVerification responsetoPython = pythonFaceRecognitionHelper.verificarRostro(
                     rutaImagen, request.getIdUser(), entityUser.getBestPhotoReference());
 
-            // RF-12: umbral de similitud ≥85% — única fuente de verdad
-            if (responsetoPython.getSimilarity() < 85.0) {
-                responsetoPython.setVerified(false);
+            // RF-12: se usa el 'verified' calibrado por el propio modelo (ArcFace),
+            // no un porcentaje fijo arbitrario. Python ya trae este valor calculado
+            // con su umbral interno de distancia; aquí solo lo respetamos.
+            if (!responsetoPython.isVerified()) {
                 responsetoPython.error();
                 responsetoPython.getListMessage().add(
                         "Error: Rostro no reconocido. Similitud: " +
-                                String.format("%.1f", responsetoPython.getSimilarity()) + "% (mínimo 85%).");
+                                String.format("%.1f", responsetoPython.getSimilarity()) + "%.");
                 return responsetoPython;
             }
+
             responsetoPython.setVerified(true);
 
             // RF-13/14: Validación de red por BSSID (preferido) o SSID (fallback)
@@ -230,10 +232,10 @@ public class BusinessAttendance {
                                 idUser,
                                 entityUser.getBestPhotoReference());
 
-                if (serverResult.getSimilarity() < 85.0) {
+                if (!serverResult.isVerified()) {
                     result.agregarRechazado(idUser, recordedAtStr,
-                            "Similitud insuficiente: " +
-                                    String.format("%.1f", serverResult.getSimilarity()) + "% (mínimo 85%)");
+                            "Rostro no reconocido. Similitud: " +
+                                    String.format("%.1f", serverResult.getSimilarity()) + "%");
                     continue;
                 }
 

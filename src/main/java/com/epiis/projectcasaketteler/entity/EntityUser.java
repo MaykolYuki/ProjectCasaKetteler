@@ -74,10 +74,6 @@ public class EntityUser {
 	@Column(name = "firstLogin")
 	private Boolean firstLogin = true;
 
-	@Column(name = "temporalPassword")
-	@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-	private String temporalPassword;
-
 	@Column(name = "bestPhotoReference")
 	private String bestPhotoReference;
 

@@ -34,14 +34,8 @@ public class SecurityConfig {
 						// ============================================
 						.requestMatchers(
 								"/casaketteler/login",
-								"/casaketteler/registerresidence",
-								"/casaketteler/indexresidence",
-								"/casaketteler/showresidence/**",
-								"/casaketteler/network/**",
-								"/casaketteler/verify",
-								"/casaketteler/attendance/health"
-
-						).permitAll()
+								"/casaketteler/attendance/health")
+						.permitAll()
 
 						// ============================================
 						// ENDPOINTS QUE SOLO SUPER_ADMIN
@@ -50,7 +44,12 @@ public class SecurityConfig {
 								"/casaketteler/deleteadmin/**",
 								"/casaketteler/registeradmin",
 								"/casaketteler/updateadmin/**",
-								"/casaketteler/updatepasswordadmin/**")
+								"/casaketteler/updatepasswordadmin/**",
+								"/casaketteler/registerresidence",
+								"/casaketteler/updateresidence/**",
+								"/casaketteler/deleteresidence/**",
+								"/casaketteler/indexresidence",
+								"/casaketteler/showresidence/**")
 						.hasAuthority("SUPER_ADMIN")
 
 						// ============================================
