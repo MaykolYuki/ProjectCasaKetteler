@@ -221,9 +221,8 @@ public class BusinessUser {
 			entityUser.setEmail(request.getEmail());
 			entityUser.setPassword(passwordEncoder().encode(temporalPassword));
 
-			// Convertir int a String
-			entityUser.setCellPhoneNumber(String.valueOf(request.getCellPhoneNumber()));
-			entityUser.setCellPhoneEmergency(String.valueOf(request.getCellPhoneEmergency()));
+			entityUser.setCellPhoneNumber(request.getCellPhoneNumber());
+			entityUser.setCellPhoneEmergency(request.getCellPhoneEmergency());
 
 			entityUser.setIpAddressLocal(obtainIpAddressHelper.getIp()); // USAR setIpAddressLocal
 			entityUser.setRole(UserRole.RESIDENTE);
@@ -419,8 +418,8 @@ public class BusinessUser {
 
 			entityUser.setFirstName(request.getFirstName());
 			entityUser.setSurName(request.getSurName());
-			entityUser.setCellPhoneNumber(String.valueOf(request.getCellPhoneNumber()));
-			entityUser.setCellPhoneEmergency(String.valueOf(request.getCellPhoneEmergency()));
+			entityUser.setCellPhoneNumber(request.getCellPhoneNumber());
+			entityUser.setCellPhoneEmergency(request.getCellPhoneEmergency());
 
 			repositoryUser.save(entityUser);
 
@@ -452,13 +451,37 @@ public class BusinessUser {
 	public Map<String, Object> getById(String idUser) {
 		ResponseUserGetById response = new ResponseUserGetById();
 		Map<String, Object> res = new HashMap<>();
-		Optional<EntityUser> entityUser = repositoryUser.findById(idUser);
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+
+		if (optional.isEmpty()) {
+			response.setType("error");
+			response.getListMessage().add("Usuario no encontrado");
+			res.put("message", response);
+			res.put("data", null);
+			return res;
+		}
+
+		EntityUser entityUser = optional.get();
+
+		// Proyección plana: solo los campos que el formulario de edición necesita.
+		// Evita serializar la entidad completa (fotos, asistencias, documentos) y
+		// expone idResidence, que en la entidad va anidado (@JsonBackReference).
+		Map<String, Object> data = new HashMap<>();
+		data.put("idUser", entityUser.getIdUser());
+		data.put("firstName", entityUser.getFirstName());
+		data.put("surName", entityUser.getSurName());
+		data.put("email", entityUser.getEmail());
+		data.put("idResidence", entityUser.getParentResidence() != null
+				? entityUser.getParentResidence().getIdResidence()
+				: null);
+		data.put("cellPhoneNumber", entityUser.getCellPhoneNumber());
+		data.put("cellPhoneEmergency", entityUser.getCellPhoneEmergency());
+		data.put("active", entityUser.getActive());
 
 		response.setType("success");
 		response.getListMessage().add("Usuario extraído correctamente");
-
 		res.put("message", response);
-		res.put("data", entityUser);
+		res.put("data", data);
 
 		return res;
 	}
@@ -489,9 +512,15 @@ public class BusinessUser {
 			entityUser.setFirstName(request.getFirstName());
 			entityUser.setSurName(request.getSurName());
 			entityUser.setEmail(request.getEmail());
-			entityUser.setCellPhoneNumber(String.valueOf(request.getCellPhoneNumber()));
-			entityUser.setCellPhoneEmergency(String.valueOf(request.getCellPhoneEmergency()));
+			entityUser.setCellPhoneNumber(request.getCellPhoneNumber());
+			entityUser.setCellPhoneEmergency(request.getCellPhoneEmergency());
 			entityUser.setIpAddressLocal(obtainIpAddressHelper.getIp());
+
+			// Solo cambia la contraseña si el admin escribió una nueva
+			// (el formulario la deja en blanco para no tocarla).
+			if (request.getPassword() != null && !request.getPassword().isBlank()) {
+				entityUser.setPassword(passwordEncoder().encode(request.getPassword()));
+			}
 
 			repositoryUser.save(entityUser);
 
