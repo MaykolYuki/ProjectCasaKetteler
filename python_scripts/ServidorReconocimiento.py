@@ -12,11 +12,18 @@ import json
 import sys
 import re
 import statistics
+import time
+import numpy as np
 
 app = Flask(__name__)
 
 STORAGE_BASE = os.environ.get("STORAGE_PATH")
 ID_PATTERN = re.compile(r'^[a-zA-Z0-9\-]+$')
+
+# Detector de rostros. ssd elegido por balance velocidad/precisión en CPU:
+# ~6x más rápido que retinaface (medido ~8s vs ~52s por verificación completa)
+# manteniendo la discriminación (genuino ~74%, impostor ~34%, umbral 55%).
+DETECTOR_BACKEND = "ssd"
 
 def id_user_valido(id_user):
     return bool(id_user) and bool(ID_PATTERN.match(id_user))
@@ -37,8 +44,19 @@ def es_ruta_segura(ruta, base_permitida):
 
 print("=== Cargando modelos de reconocimiento facial... ===")
 try:
+    t_carga = time.time()
     DeepFace.build_model("ArcFace")
-    print("=== Modelos cargados correctamente ===")
+    # Precarga del detector (DETECTOR_BACKEND) y del modelo de anti-spoofing.
+    # Sin esto, la primera petición real es la que paga el costo de cargarlos
+    # desde disco (pueden ser decenas de segundos).
+    _dummy_img = np.zeros((224, 224, 3), dtype=np.uint8)
+    DeepFace.extract_faces(
+        img_path=_dummy_img,
+        detector_backend=DETECTOR_BACKEND,
+        anti_spoofing=True,
+        enforce_detection=False
+    )
+    print(f"=== Modelos cargados correctamente ({time.time() - t_carga:.1f}s) ===", flush=True)
 except Exception as e:
     print(f"=== Error cargando modelos: {e} ===")
 
@@ -91,6 +109,9 @@ def seleccionar_mejor_foto(directorio_fotos):
 
 def verificar_rostros_rafaga(rutas_capturas, ruta_foto_referencia):
     """Compara N capturas contra la referencia y decide por mediana robusta."""
+    t_inicio = time.time()
+    print(f"[TIMING] Inicio verificación con {len(rutas_capturas)} frames", flush=True)
+
     if not os.path.exists(ruta_foto_referencia):
         return {"success": False, "verified": False, "similarity": 0.0,
                 "error": "Foto de referencia no existe"}
@@ -100,30 +121,41 @@ def verificar_rostros_rafaga(rutas_capturas, ruta_foto_referencia):
     umbral_modelo = None
     algun_spoof = False
     rostros_validos = 0
+    spoof_verificado = False  # anti-spoofing solo corre hasta el primer frame real
 
-    for ruta in rutas_capturas:
+    for idx, ruta in enumerate(rutas_capturas):
+        t_frame = time.time()
         try:
-            # Anti-spoofing por cada frame
-            analisis = DeepFace.extract_faces(
-                img_path=ruta,
-                detector_backend="retinaface",
-                anti_spoofing=True,
-                enforce_detection=True
-            )
-            if len(analisis) == 0:
-                continue
-            if not analisis[0]["is_real"]:
-                algun_spoof = True
-                continue
+            if not spoof_verificado:
+                # Anti-spoofing: se corre una sola vez (es caro), no por cada frame
+                t_spoof = time.time()
+                analisis = DeepFace.extract_faces(
+                    img_path=ruta,
+                    detector_backend=DETECTOR_BACKEND,
+                    anti_spoofing=True,
+                    enforce_detection=True
+                )
+                print(f"[TIMING] Frame {idx} anti-spoofing: {time.time() - t_spoof:.1f}s", flush=True)
+                if len(analisis) == 0:
+                    print(f"[TIMING] Frame {idx} SIN ROSTRO (spoof-check): {time.time() - t_frame:.1f}s", flush=True)
+                    continue
+                if not analisis[0]["is_real"]:
+                    algun_spoof = True
+                    print(f"[TIMING] Frame {idx} SPOOF detectado: {time.time() - t_frame:.1f}s", flush=True)
+                    continue
+                spoof_verificado = True
 
+            t_verify = time.time()
             resultado = DeepFace.verify(
                 img1_path=ruta,
                 img2_path=ruta_foto_referencia,
                 model_name="ArcFace",
-                detector_backend="retinaface",
+                detector_backend=DETECTOR_BACKEND,
                 enforce_detection=True,
                 align=True
             )
+            print(f"[TIMING] Frame {idx} verify: {time.time() - t_verify:.1f}s "
+                  f"(total frame: {time.time() - t_frame:.1f}s)", flush=True)
 
             distancia = resultado["distance"]
             umbral = resultado["threshold"]
@@ -137,9 +169,13 @@ def verificar_rostros_rafaga(rutas_capturas, ruta_foto_referencia):
 
         except ValueError:
             # enforce_detection=True: no había rostro claro en este frame, se descarta
+            print(f"[TIMING] Frame {idx} SIN ROSTRO: {time.time() - t_frame:.1f}s", flush=True)
             continue
-        except Exception:
+        except Exception as e:
+            print(f"[TIMING] Frame {idx} ERROR ({e}): {time.time() - t_frame:.1f}s", flush=True)
             continue
+
+    print(f"[TIMING] TOTAL: {time.time() - t_inicio:.1f}s, frames válidos: {rostros_validos}", flush=True)
 
     # Si ningún frame tuvo rostro válido
     if rostros_validos == 0:

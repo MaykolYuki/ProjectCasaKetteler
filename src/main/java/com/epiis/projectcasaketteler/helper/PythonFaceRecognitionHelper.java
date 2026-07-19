@@ -1,7 +1,6 @@
 package com.epiis.projectcasaketteler.helper;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -38,7 +37,7 @@ public class PythonFaceRecognitionHelper {
         String jsonBody = mapper.writeValueAsString(body);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(SERVER_URL + endpoint))
-                .timeout(Duration.ofSeconds(60))
+                .timeout(Duration.ofSeconds(120))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
@@ -106,34 +105,6 @@ public class PythonFaceRecognitionHelper {
             error.setVerified(false);
             error.setError(e.getMessage());
             return error;
-        }
-    }
-
-    public ResponseFaceVerification verificarRostroBase64(String base64Image, String idUser,
-            String bestPhotoFileName) {
-        File tempFile = null;
-        try {
-            byte[] imageBytes = Base64.getDecoder().decode(base64Image);
-            String tempDir = tempPath + "/";
-            new File(tempDir).mkdirs();
-            String fileName = "sync_" + idUser + "_" + System.currentTimeMillis() + ".jpg";
-            tempFile = new File(tempDir + fileName);
-
-            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
-                fos.write(imageBytes);
-            }
-
-            return verificarRostro(new String[] { tempFile.getAbsolutePath() }, idUser, bestPhotoFileName);
-
-        } catch (Exception e) {
-            ResponseFaceVerification error = new ResponseFaceVerification();
-            error.setVerified(false);
-            error.setError("Error decodificando imagen: " + e.getMessage());
-            return error;
-        } finally {
-            if (tempFile != null && tempFile.exists()) {
-                tempFile.delete();
-            }
         }
     }
 
