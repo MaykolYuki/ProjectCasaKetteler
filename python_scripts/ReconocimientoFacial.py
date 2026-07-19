@@ -36,7 +36,9 @@ def verificar_usuario(ruta_imagen_capturada, ruta_foto_referencia):
             img1_path=ruta_imagen_capturada,
             img2_path=ruta_foto_referencia,
             model_name="ArcFace",
-            enforce_detection=False
+            detector_backend="retinaface",
+            enforce_detection=True,
+            align=True
         )
 
         distancia = resultado["distance"]

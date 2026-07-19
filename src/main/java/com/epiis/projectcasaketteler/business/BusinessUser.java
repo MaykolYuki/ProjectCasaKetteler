@@ -360,6 +360,7 @@ public class BusinessUser {
 			userData.put("role", user.getRole());
 			userData.put("active", user.getActive());
 			userData.put("firstLogin", user.getFirstLogin());
+			userData.put("presente", user.getPresente());
 
 			if (user.getParentResidence() != null) {
 				userData.put("idResidence", user.getParentResidence().getIdResidence());

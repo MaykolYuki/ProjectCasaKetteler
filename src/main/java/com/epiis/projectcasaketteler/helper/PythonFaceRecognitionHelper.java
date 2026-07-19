@@ -65,7 +65,7 @@ public class PythonFaceRecognitionHelper {
         }
     }
 
-    public ResponseFaceVerification verificarRostro(String rutaImagen, String idUser,
+    public ResponseFaceVerification verificarRostro(String[] rutasImagenes, String idUser,
             String bestPhotoFileName) {
         try {
             String directorioUsuario = storagePath + "/Photo/" + idUser;
@@ -87,13 +87,15 @@ public class PythonFaceRecognitionHelper {
             File mejorFoto = new File(directorioUsuario + "/" + mejorFotoNombre);
             String rutaAbsolutaMejorFoto = mejorFoto.getAbsolutePath();
 
-            File capturaFile = new File(rutaImagen);
-            byte[] imageBytes = java.nio.file.Files.readAllBytes(capturaFile.toPath());
-            String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+            java.util.List<String> imagenesBase64 = new java.util.ArrayList<>();
+            for (String ruta : rutasImagenes) {
+                byte[] imageBytes = java.nio.file.Files.readAllBytes(new File(ruta).toPath());
+                imagenesBase64.add(Base64.getEncoder().encodeToString(imageBytes));
+            }
 
             Map<String, Object> body = new HashMap<>();
             body.put("rutaReferencia", rutaAbsolutaMejorFoto);
-            body.put("imagenBase64", base64Image);
+            body.put("imagenesBase64", imagenesBase64);
             body.put("idUser", idUser);
 
             String json = postJson("/verificar", body);
@@ -121,7 +123,7 @@ public class PythonFaceRecognitionHelper {
                 fos.write(imageBytes);
             }
 
-            return verificarRostro(tempFile.getAbsolutePath(), idUser, bestPhotoFileName);
+            return verificarRostro(new String[] { tempFile.getAbsolutePath() }, idUser, bestPhotoFileName);
 
         } catch (Exception e) {
             ResponseFaceVerification error = new ResponseFaceVerification();

@@ -1,6 +1,7 @@
 package com.epiis.projectcasaketteler.business;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Optional;
@@ -11,6 +12,7 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
 import com.epiis.projectcasaketteler.dto.response.ResponseAttendancePage;
@@ -42,7 +44,7 @@ public class BusinessAttendance {
     private String tempPath;
 
     public ResponseFaceVerification insert(RequestAttendanceInsert request) {
-        File tempFile = null;
+        List<File> tempFilesRafaga = new ArrayList<>();
         ResponseFaceVerification response = new ResponseFaceVerification();
 
         // Verificar que el servidor de reconocimiento facial esté activo
@@ -62,15 +64,6 @@ public class BusinessAttendance {
                 directory.mkdirs();
             }
 
-            String fileName = "captura_" + request.getIdUser() + ".jpg";
-            String rutaImagen = tempDir + fileName;
-            tempFile = new File(rutaImagen);
-
-            // 2. ¡LA SOLUCIÓN AQUÍ! En lugar de transferTo pasándole el File relativo
-            // directo a Tomcat,
-            // le pasamos la ruta absoluta real que Windows sí entiende al 100%.
-            request.getFile().transferTo(tempFile.getAbsoluteFile());
-
             // Obtener usuario PRIMERO
             Optional<EntityUser> optionalUser = repositoryUser.findById(request.getIdUser());
             if (!optionalUser.isPresent()) {
@@ -80,9 +73,28 @@ public class BusinessAttendance {
             }
             EntityUser entityUser = optionalUser.get();
 
+            // Guardar las N capturas de la ráfaga en temp. En lugar de transferTo
+            // pasándole el File relativo directo a Tomcat, le pasamos la ruta absoluta
+            // real que Windows sí entiende al 100%.
+            MultipartFile[] files = request.getFiles();
+            if (files == null || files.length == 0) {
+                response.error();
+                response.getListMessage().add("Error: No se recibió ninguna captura.");
+                return response;
+            }
+
+            List<String> rutasCapturas = new ArrayList<>();
+            for (int i = 0; i < files.length; i++) {
+                String fileName = "captura_" + request.getIdUser() + "_" + i + ".jpg";
+                File f = new File(tempDir + fileName);
+                files[i].transferTo(f.getAbsoluteFile());
+                rutasCapturas.add(f.getAbsolutePath());
+                tempFilesRafaga.add(f);
+            }
+
             // Ahora sí, llamar a Python con la referencia cacheada
             ResponseFaceVerification responsetoPython = pythonFaceRecognitionHelper.verificarRostro(
-                    rutaImagen, request.getIdUser(), entityUser.getBestPhotoReference());
+                    rutasCapturas.toArray(new String[0]), request.getIdUser(), entityUser.getBestPhotoReference());
 
             // RF-12: verificación calibrada del modelo (verified de ArcFace)
             boolean identidadValida = responsetoPython.isVerified();
@@ -201,8 +213,10 @@ public class BusinessAttendance {
             response.getListMessage().add("Error: El servicio no funciona por el momento.");
             return response;
         } finally {
-            if (tempFile != null && tempFile.exists()) {
-                tempFile.delete();
+            for (File f : tempFilesRafaga) {
+                if (f.exists()) {
+                    f.delete();
+                }
             }
         }
     }
