@@ -110,6 +110,10 @@ public class BusinessUser {
 				// Login exitoso — resetear intentos
 				admin.setLoginAttempts(0);
 				admin.setLockedUntil(null);
+				// Sesión única: invalida cualquier token emitido antes de ahora (otros
+				// dispositivos). Se resta un margen porque el "iat" del JWT está en
+				// segundos; sin él, el token recién emitido podría rechazarse a sí mismo.
+				admin.setTokenValidAfter(new Date(System.currentTimeMillis() - 5000));
 				repositoryAdmin.save(admin);
 
 				String token = jwtHelper.generateToken(admin.getIdAdmin(), admin.getEmail(),
@@ -169,6 +173,10 @@ public class BusinessUser {
 				// Login exitoso — resetear intentos
 				user.setLoginAttempts(0);
 				user.setLockedUntil(null);
+				// Sesión única: invalida cualquier token emitido antes de ahora (otros
+				// dispositivos). Se resta un margen porque el "iat" del JWT está en
+				// segundos; sin él, el token recién emitido podría rechazarse a sí mismo.
+				user.setTokenValidAfter(new Date(System.currentTimeMillis() - 5000));
 				repositoryUser.save(user);
 
 				String token = jwtHelper.generateToken(user.getIdUser(), user.getEmail(),
