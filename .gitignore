@@ -65,3 +65,6 @@ logs/
 
 # Interfaz web copiada al servidor (se genera desde el proyecto Angular)
 frontend/
+
+# Respaldos de la base de datos
+backups/
