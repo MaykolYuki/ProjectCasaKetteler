@@ -36,6 +36,9 @@ public class BusinessDocumentResignation {
 	@Autowired
 	private DocumentValidationHelper documentValidationHelper;
 
+	@Autowired
+	private com.epiis.projectcasaketteler.helper.DocumentNameHelper documentNameHelper;
+
 	@Value("${app.storage.path}")
 	private String storageDir;
 
@@ -79,7 +82,9 @@ public class BusinessDocumentResignation {
 		}
 
 		String fileNameUUID = UUID.randomUUID().toString();
-		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+		// Nombre legible para el usuario: RENUNCIA_Nombre_Apellido_fecha.ext
+		String filePhysicalName = documentNameHelper.construirUnico(storagePath, "RENUNCIA",
+				entityUser.getFirstName(), entityUser.getSurName(), extension);
 
 		Path filePath = storagePath.resolve(filePhysicalName);
 		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
@@ -233,8 +238,9 @@ public class BusinessDocumentResignation {
 			extension = originalFileName.substring(originalFileName.lastIndexOf(".") + 1);
 		}
 
-		String fileNameUUID = UUID.randomUUID().toString();
-		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+		// Nombre legible: FORMATORENUNCIA_Nombre_Apellido_fecha.ext
+		String filePhysicalName = documentNameHelper.construirUnico(storagePath, "FORMATORENUNCIA",
+				entityUser.getFirstName(), entityUser.getSurName(), extension);
 
 		Path filePath = storagePath.resolve(filePhysicalName);
 		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);

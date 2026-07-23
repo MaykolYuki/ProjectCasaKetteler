@@ -40,6 +40,9 @@ public class BusinessDocumentGeneral {
 	@Autowired
 	private DocumentValidationHelper documentValidationHelper;
 
+	@Autowired
+	private com.epiis.projectcasaketteler.helper.DocumentNameHelper documentNameHelper;
+
 	@Value("${app.storage.path}")
 	private String storageDir;
 
@@ -108,7 +111,9 @@ public class BusinessDocumentGeneral {
 		}
 
 		String fileNameUUID = UUID.randomUUID().toString();
-		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+		// Nombre legible para el usuario: TIPO_Nombre_Apellido_fecha.ext
+		String filePhysicalName = documentNameHelper.construirUnico(storagePath, request.getType(),
+				entityUser.getFirstName(), entityUser.getSurName(), extension);
 
 		Path filePath = storagePath.resolve(filePhysicalName);
 		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
