@@ -1,8 +1,10 @@
 package com.epiis.projectcasaketteler.controller;
 
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -80,6 +82,20 @@ public class UserController {
 	public ResponseEntity<Map<String, Object>> getMyProfile(@RequestHeader("Authorization") String token) {
 		String userId = extractUserIdFromToken(token);
 		return ResponseEntity.ok(businessUser.getMyProfile(userId));
+	}
+
+	// Foto del residente (thumbnail comprimido) para el perfil.
+	@GetMapping(path = "myphoto")
+	public ResponseEntity<byte[]> getMyPhoto(@RequestHeader("Authorization") String token) {
+		String userId = extractUserIdFromToken(token);
+		byte[] foto = businessUser.getMyPhoto(userId);
+		if (foto == null) {
+			return ResponseEntity.notFound().build();
+		}
+		return ResponseEntity.ok()
+				.contentType(MediaType.IMAGE_JPEG)
+				.cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
+				.body(foto);
 	}
 
 	@PutMapping(path = "myprofile", consumes = MediaType.APPLICATION_JSON_VALUE)

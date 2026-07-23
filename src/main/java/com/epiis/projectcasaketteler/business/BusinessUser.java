@@ -1,5 +1,10 @@
 package com.epiis.projectcasaketteler.business;
 
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -7,7 +12,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import javax.imageio.ImageIO;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -54,6 +62,9 @@ public class BusinessUser {
 
 	@Autowired
 	private EmailHelper emailHelper;
+
+	@Value("${app.storage.path}")
+	private String storagePath;
 
 	private BCryptPasswordEncoder passwordEncoder() {
 		return passwordEncoderHelper.passwordEncoder();
@@ -576,5 +587,49 @@ public class BusinessUser {
 			password.append(chars.charAt(index));
 		}
 		return password.toString();
+	}
+
+	// Devuelve la mejor foto del residente como un thumbnail JPEG (~256px, comprimido)
+	// para mostrarla en el perfil sin cargar la imagen completa. null si no hay foto.
+	public byte[] getMyPhoto(String userId) {
+		Optional<EntityUser> optional = repositoryUser.findById(userId);
+		if (optional.isEmpty()) {
+			return null;
+		}
+		String best = optional.get().getBestPhotoReference();
+		if (best == null || best.isBlank()) {
+			return null;
+		}
+
+		File foto = new File(storagePath + "/Photo/" + userId + "/" + best);
+		if (!foto.exists()) {
+			return null;
+		}
+
+		try {
+			BufferedImage original = ImageIO.read(foto);
+			if (original == null) {
+				return null;
+			}
+
+			int maxLado = 256;
+			int w = original.getWidth();
+			int h = original.getHeight();
+			double escala = Math.min(1.0, (double) maxLado / Math.max(w, h));
+			int nw = Math.max(1, (int) Math.round(w * escala));
+			int nh = Math.max(1, (int) Math.round(h * escala));
+
+			BufferedImage thumb = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_RGB);
+			Graphics2D g = thumb.createGraphics();
+			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			g.drawImage(original, 0, 0, nw, nh, null);
+			g.dispose();
+
+			ByteArrayOutputStream baos = new ByteArrayOutputStream();
+			ImageIO.write(thumb, "jpg", baos);
+			return baos.toByteArray();
+		} catch (Exception e) {
+			return null;
+		}
 	}
 }
