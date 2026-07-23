@@ -68,3 +68,12 @@ frontend/
 
 # Respaldos de la base de datos
 backups/
+
+# Archivos temporales del reconocimiento facial (se generan al marcar asistencia)
+temp/
+
+# Carpeta de sesion de herramientas de IA
+.claude/
+
+# Volcado del codigo generado por empaquetar_todo.sh (el codigo real ya esta en el repo)
+todo_el_codigo_proyecto.txt
