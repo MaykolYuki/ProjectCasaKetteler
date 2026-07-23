@@ -78,7 +78,8 @@ public class SecurityConfig {
 								"/casaketteler/assignresignation", // admin: asignar formato de renuncia
 								"/casaketteler/attendance/filter",
 								"/casaketteler/attendance/export",
-								"/casaketteler/attendance/kpi")
+								"/casaketteler/attendance/kpi",
+								"/casaketteler/backup") // respaldo manual del sistema
 						.hasAnyAuthority("SUPER_ADMIN", "ADMIN")
 						// ============================================
 						// RESTO DE LA API: requiere autenticación (cualquier rol)

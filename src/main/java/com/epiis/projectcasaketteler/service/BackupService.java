@@ -1,6 +1,8 @@
 package com.epiis.projectcasaketteler.service;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,6 +11,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +57,10 @@ public class BackupService {
 
 	@Value("${spring.datasource.url}")
 	private String urlBd;
+
+	/** Carpeta con las fotos de los residentes y los documentos subidos. */
+	@Value("${app.storage.path}")
+	private String carpetaArchivos;
 
 	/** Por defecto: todos los días a las 2:00 a. m. */
 	@Scheduled(cron = "${app.backup.cron:0 0 2 * * *}")
@@ -112,12 +120,68 @@ public class BackupService {
 		}
 	}
 
+	/** Por defecto: los domingos a las 2:30 a. m. (los archivos cambian menos que la BD). */
+	@Scheduled(cron = "${app.backup.archivos-cron:0 30 2 * * SUN}")
+	public void respaldoArchivosProgramado() {
+		if (!habilitado) {
+			return;
+		}
+		crearRespaldoArchivos();
+	}
+
+	/**
+	 * Comprime las fotos y documentos en un .zip. La base de datos por sí sola no basta:
+	 * sin estos archivos el reconocimiento facial deja de funcionar.
+	 */
+	public File crearRespaldoArchivos() {
+		Path origen = Paths.get(carpetaArchivos);
+		if (!Files.isDirectory(origen)) {
+			log.warn("No se encontró la carpeta de archivos ({}); se omite su respaldo", origen);
+			return null;
+		}
+
+		try {
+			Path carpeta = Paths.get(carpetaRespaldos);
+			Files.createDirectories(carpeta);
+
+			String nombre = "archivos_" + LocalDateTime.now().format(MARCA_TIEMPO) + ".zip";
+			File destino = carpeta.resolve(nombre).toFile();
+
+			try (ZipOutputStream zip = new ZipOutputStream(
+					new BufferedOutputStream(new FileOutputStream(destino)));
+					Stream<Path> rutas = Files.walk(origen)) {
+
+				rutas.filter(Files::isRegularFile).forEach(archivo -> {
+					try {
+						String rutaRelativa = origen.relativize(archivo).toString().replace('\\', '/');
+						zip.putNextEntry(new ZipEntry(rutaRelativa));
+						Files.copy(archivo, zip);
+						zip.closeEntry();
+					} catch (IOException e) {
+						log.warn("No se pudo incluir {} en el respaldo: {}", archivo, e.getMessage());
+					}
+				});
+			}
+
+			log.info("Respaldo de archivos creado: {} ({} KB)", destino.getName(), destino.length() / 1024);
+			borrarRespaldosAntiguos(carpeta);
+			return destino;
+
+		} catch (IOException e) {
+			log.error("No se pudo crear el respaldo de archivos: {}", e.getMessage());
+			return null;
+		}
+	}
+
 	/** Conserva solo los respaldos de los últimos N días. */
 	private void borrarRespaldosAntiguos(Path carpeta) {
 		long limite = System.currentTimeMillis() - (diasQueSeConservan * 24L * 60 * 60 * 1000);
 
 		try (Stream<Path> archivos = Files.list(carpeta)) {
-			archivos.filter(p -> p.getFileName().toString().endsWith(".sql"))
+			archivos.filter(p -> {
+				String nombre = p.getFileName().toString();
+				return nombre.endsWith(".sql") || nombre.endsWith(".zip");
+			})
 					.filter(p -> p.toFile().lastModified() < limite)
 					.sorted(Comparator.naturalOrder())
 					.forEach(p -> {
