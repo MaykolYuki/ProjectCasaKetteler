@@ -42,6 +42,13 @@ Write-Host ""
 Write-Host "  Iniciando Casa Ketteler..." -ForegroundColor Cyan
 Write-Host ""
 
+# Los servidores se ejecutan SIN ventana de consola y su salida va a archivos de log.
+# Motivo: si un servidor corre en una consola visible y alguien hace clic dentro (o
+# selecciona texto), el "modo QuickEdit" de Windows CONGELA el proceso hasta pulsar
+# una tecla. Sin consola, eso no puede pasar; y los logs quedan para diagnosticar.
+$logs = Join-Path $PSScriptRoot "logs"
+if (-not (Test-Path $logs)) { New-Item -ItemType Directory -Path $logs | Out-Null }
+
 # --- 2. Servidor de reconocimiento facial (Python) ---
 if (Test-Puerto 5000) {
     Write-Host "  - Reconocimiento facial: ya estaba en ejecucion." -ForegroundColor Yellow
@@ -53,7 +60,7 @@ if (Test-Puerto 5000) {
         exit 1
     }
     $carpetaPython = Join-Path $PSScriptRoot "python_scripts"
-    Start-Process -FilePath $python -ArgumentList "ServidorReconocimiento.py" -WorkingDirectory $carpetaPython -WindowStyle Minimized
+    Start-Process -FilePath $python -ArgumentList "ServidorReconocimiento.py" -WorkingDirectory $carpetaPython -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs "reconocimiento.log") -RedirectStandardError (Join-Path $logs "reconocimiento.error.log")
     Write-Host "  - Reconocimiento facial: iniciando (carga los modelos, puede tardar ~30s)."
 }
 
@@ -68,7 +75,7 @@ if (Test-Puerto 8001) {
         Read-Host "Presiona ENTER para cerrar"
         exit 1
     }
-    Start-Process -FilePath "java" -ArgumentList "-jar", "`"$jar`"" -WorkingDirectory $PSScriptRoot -WindowStyle Minimized
+    Start-Process -FilePath "java" -ArgumentList "-jar", "`"$jar`"" -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs "backend.log") -RedirectStandardError (Join-Path $logs "backend.error.log")
     Write-Host "  - Backend: iniciando."
 }
 
@@ -95,7 +102,8 @@ while ($true) {
     if ($java -and $py) {
         Write-Host "   El sistema esta listo para usarse." -ForegroundColor Green
     } else {
-        Write-Host "   Si algo sigue DETENIDO tras un minuto, revisa su ventana minimizada." -ForegroundColor Yellow
+        Write-Host "   Si algo sigue DETENIDO tras un minuto, revisa los archivos de la" -ForegroundColor Yellow
+        Write-Host "   carpeta 'logs' para ver que ocurrio." -ForegroundColor Yellow
     }
 
     Write-Host ""

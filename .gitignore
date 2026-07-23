@@ -60,3 +60,5 @@ src/main/resources/application-prod.properties
 
 # Archivos de configuración local con credenciales privadas
 .env
+# Logs generados por el lanzador del sistema
+logs/
