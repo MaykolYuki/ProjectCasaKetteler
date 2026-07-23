@@ -81,9 +81,15 @@ public class SecurityConfig {
 								"/casaketteler/attendance/kpi")
 						.hasAnyAuthority("SUPER_ADMIN", "ADMIN")
 						// ============================================
-						// RESTO requieren autenticación (cualquier rol)
+						// RESTO DE LA API: requiere autenticación (cualquier rol)
 						// ============================================
-						.anyRequest().authenticated())
+						.requestMatchers("/casaketteler/**").authenticated()
+						// ============================================
+						// Archivos de la interfaz web (Angular) servidos por este mismo
+						// backend: son públicos porque son solo el "cascarón" de la app.
+						// La protección real está en la API de arriba.
+						// ============================================
+						.anyRequest().permitAll())
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 

@@ -62,3 +62,6 @@ src/main/resources/application-prod.properties
 .env
 # Logs generados por el lanzador del sistema
 logs/
+
+# Interfaz web copiada al servidor (se genera desde el proyecto Angular)
+frontend/
