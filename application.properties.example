@@ -34,3 +34,22 @@ jwt.expiration=86400000
 
 # Orígenes CORS permitidos (Toma la lista del .env o usa los localhost por defecto)
 app.cors.allowed-origins=${CORS_ALLOWED_ORIGINS:http://localhost:4200,capacitor://localhost,http://localhost}
+
+# Rutas de almacenamiento (fotos de reconocimiento y documentos). Vienen del .env
+app.storage.path=${APP_STORAGE_PATH}
+app.temp.path=${APP_TEMP_PATH}
+
+# Interfaz web servida por este mismo backend, para que el administrador entre
+# desde el navegador sin instalar Node. Es una carpeta externa junto al JAR, así
+# se puede actualizar el front sin regenerar el JAR.
+app.frontend.path=${APP_FRONTEND_PATH:./frontend/}
+spring.web.resources.static-locations=file:${APP_FRONTEND_PATH:./frontend/}
+
+# Respaldo automático (base de datos diaria y archivos los domingos)
+app.backup.enabled=true
+app.backup.path=./backups
+app.backup.retention-days=14
+app.backup.cron=0 0 2 * * *
+app.backup.archivos-cron=0 30 2 * * SUN
+# En Windows mysqldump no suele estar en el PATH: indica la ruta completa
+app.backup.mysqldump=C:/Program Files/MySQL/MySQL Server 8.0/bin/mysqldump.exe
