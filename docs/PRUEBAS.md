@@ -159,8 +159,149 @@ futuros: cualquier modificación que rompa una de estas reglas será detectada d
 
 ## 8.2 Pruebas de Carga
 
-*(En elaboración)*
+### Objetivo
+
+Verificar que el sistema atiende, de manera estable y con tiempos de respuesta
+aceptables, una cantidad de usuarios concurrentes **muy superior** a la del uso real
+esperado, sin degradarse ni producir errores.
+
+### Herramienta y entorno
+
+| Elemento | Detalle |
+|----------|---------|
+| Herramienta | Apache JMeter 5.6.3 (ejecución sin interfaz, por consola) |
+| Servidor | Backend Spring Boot real + MySQL 8, escuchando en `http://localhost:8001` |
+| Pool de conexiones | HikariCP, máximo 10 conexiones a la base de datos |
+| Máquina | AMD Ryzen 5 3550H (4 núcleos / 8 hilos), 15.7 GB RAM, Windows 11 |
+| Autenticación | Un único inicio de sesión al arranque (usuario administrador de prueba); el token JWT se reutiliza en todas las peticiones |
+
+> **Nota metodológica:** por tratarse de un entorno de desarrollo, el generador de carga
+> (JMeter), el servidor y la base de datos se ejecutaron en **la misma máquina**,
+> compitiendo por CPU. Los valores obtenidos son, por tanto, **conservadores**: en un
+> servidor dedicado el rendimiento sería mayor.
+
+### Alcance
+
+Se midieron las tres operaciones de **lectura** más frecuentes del panel de
+administración, todas respaldadas por consultas a la base de datos:
+
+- `GET /casaketteler/indexuser` — listado de residentes.
+- `GET /casaketteler/attendance/kpi` — indicadores agregados de asistencia.
+- `GET /casaketteler/attendance/filter` — historial de asistencia paginado.
+
+Quedaron **fuera de alcance** por diseño:
+
+- El **reconocimiento facial** (`register`): depende del servicio Python y de imágenes
+  reales; su tiempo (3–5 s) es intrínseco al algoritmo, no a la concurrencia. Su
+  comportamiento se documenta en el requisito RNF-05.
+- El **inicio de sesión**: cuenta con un limitador de 15 intentos por IP cada 15 minutos
+  (protección contra fuerza bruta), por lo que no es un objetivo válido de saturación.
+
+### Escenario de carga
+
+| Parámetro | Valor |
+|-----------|-------|
+| Usuarios concurrentes | 20 |
+| Rampa de subida | 10 s |
+| Duración sostenida | 60 s |
+| Operación de cada usuario | Ciclo continuo: listar residentes → KPIs → historial |
+
+### Resultados
+
+**Global**
+
+| Métrica | Resultado |
+|---------|-----------|
+| Peticiones totales | 3 655 |
+| Rendimiento (*throughput*) | **59 peticiones/s** |
+| Latencia promedio | 302 ms |
+| Percentil 95 (p95) | 661 ms |
+| Percentil 99 (p99) | 994 ms |
+| Latencia máxima | 3 192 ms |
+| **Errores** | **0 (0.00 %)** |
+
+**Por operación**
+
+| Operación | Peticiones | Latencia promedio | Errores |
+|-----------|:----------:|:-----------------:|:-------:|
+| Listar residentes (`indexuser`) | 1 227 | 475 ms | 0 |
+| KPIs de asistencia (`kpi`) | 1 215 | 210 ms | 0 |
+| Historial filtrado (`filter`) | 1 212 | 221 ms | 0 |
+
+### Interpretación
+
+Con 20 usuarios concurrentes —un orden de magnitud por encima del uso real, donde la
+residencia opera con 2 o 3 administradores— el sistema respondió **sin un solo error** y
+con una latencia promedio de **0.3 s**; el 95 % de las peticiones se resolvió en menos de
+0.7 s. La operación más costosa es el listado de residentes (475 ms), por incluir los
+datos de los 17 residentes. Se concluye que el sistema **soporta holgadamente la carga
+esperada** con tiempos de respuesta cómodos para una interfaz web.
+
+---
 
 ## 8.3 Pruebas de Estrés
 
-*(En elaboración)*
+### Objetivo
+
+Someter al sistema a una carga **creciente y muy por encima de lo normal** para
+identificar su punto de saturación (capacidad máxima), su comportamiento ante la
+sobrecarga y su límite de ruptura.
+
+### Escenario
+
+Se repitió el mismo perfil de operaciones de la prueba de carga, incrementando de forma
+escalonada el número de usuarios concurrentes: **50 → 100 → 200 → 400 → 800**, con 30 s
+sostenidos por cada nivel.
+
+### Resultados
+
+| Usuarios | Rendimiento (req/s) | Latencia prom. | p95 | Latencia máx. | Errores |
+|:--------:|:-------------------:|:--------------:|:---:|:-------------:|:-------:|
+| 20 *(carga)* | 59 | 302 ms | 661 ms | 3.2 s | 0.00 % |
+| 50 | 71 | 614 ms | 1 102 ms | 2.3 s | 0.00 % |
+| 100 | 71 | 1 246 ms | 2 106 ms | 4.6 s | 0.00 % |
+| 200 | 75 | 2 334 ms | 3 412 ms | 5.2 s | 0.00 % |
+| 400 | 73 | 4 538 ms | 8 444 ms | 10.0 s | 0.00 % |
+| 800 | 70 | 9 568 ms | 15 814 ms | 20.8 s | 0.00 % |
+
+### Interpretación
+
+Los resultados dibujan una **curva de saturación de libro de texto**:
+
+1. **Techo de rendimiento (~70–75 peticiones/s).** A partir de 50 usuarios el
+   *throughput* deja de crecer y se estabiliza en torno a 70 peticiones por segundo:
+   es la **capacidad máxima** de la máquina de prueba. Añadir más usuarios ya no procesa
+   más trabajo por segundo.
+
+2. **Punto de saturación (“rodilla”): ~50 usuarios concurrentes.** Por debajo, sumar
+   usuarios aumenta el rendimiento; por encima, solo aumenta la latencia. Esto es
+   coherente con la **Ley de Little** (latencia ≈ concurrencia ÷ rendimiento): con 200
+   usuarios y 75 req/s la latencia teórica es ≈ 2.7 s, muy cercana a los 2.3 s medidos.
+
+3. **Degradación elegante, sin ruptura.** El hallazgo más importante: **incluso con 800
+   usuarios concurrentes el sistema no produjo ni un solo error**. Ante la sobrecarga
+   **encola** las peticiones (crece la espera) en lugar de rechazarlas o caerse. La
+   latencia máxima observada (20.8 s) se mantuvo por debajo del tiempo de espera
+   configurado (30 s), por lo que ninguna petición se perdió.
+
+4. **Cuello de botella.** El límite lo impone la CPU de la máquina de prueba —compartida
+   entre generador de carga, servidor y base de datos— junto con el pool de 10 conexiones
+   a la base de datos. No se trata de un defecto del software, sino de la capacidad del
+   hardware de prueba.
+
+### Conclusión y recomendaciones
+
+El sistema es **robusto**: mantiene 0 % de error desde el uso real hasta 800 usuarios
+concurrentes (más de 250 veces la demanda esperada), degradándose de forma controlada.
+Para el caso de uso de una residencia universitaria —decenas de residentes y un puñado de
+administradores— existe un **margen de capacidad enorme**.
+
+De cara a un despliegue en producción o a un crecimiento futuro, se recomienda:
+
+- Ejecutar el servicio en un **servidor dedicado** (sin compartir CPU con el cliente),
+  lo que elevaría el techo de rendimiento observado.
+- Si se previera una concurrencia sostenida alta, **aumentar el tamaño del pool de
+  conexiones** de HikariCP y ajustar los hilos de Tomcat.
+
+Para el alcance actual del proyecto, sin embargo, **ninguna de estas medidas es necesaria**:
+el rendimiento medido excede ampliamente los requisitos.
