@@ -83,6 +83,20 @@ Revisa en este orden:
 3. **¿Aparece "Rostro no reconocido"?** Que se ponga de frente, con buena luz y sin
    gorra ni lentes oscuros. Si sigue fallando, quizá haya que actualizar sus fotos
    de referencia desde *Gestión de usuarios → Editar → Subir fotos*.
+4. **¿Se cambió el router de la residencia?** Si a **nadie** le funciona la marca justo
+   después de cambiar el equipo de Wi-Fi, es porque la red oficial quedó registrada con
+   los datos del router anterior. Hay que actualizarla (ver la nota siguiente).
+
+### La red Wi-Fi de la residencia (dato técnico)
+
+Para validar que la marca se hace **dentro** de la residencia, el sistema guarda los
+datos de la red Wi-Fi oficial (nombre e identificador del punto de acceso). Ese dato se
+carga **una sola vez, a mano**, durante la instalación, y **no se puede detectar solo**.
+
+Normalmente no hay que tocarlo. **Solo** hay que volver a cargarlo si se **reemplaza el
+router o el punto de acceso**. Es una tarea técnica: el procedimiento está en
+[DESPLIEGUE.md → paso 5.1](DESPLIEGUE.md). Si ocurre y no sabes hacerlo, pásalo a quien
+dé soporte técnico.
 
 ### "El servidor no responde" o la app queda cargando
 

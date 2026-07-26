@@ -178,6 +178,17 @@ npx ng test --watch=false
 
 > La prueba `contextLoads` necesita **MySQL encendido**; las demás no.
 
+**Pruebas de carga y estrés (opcional).** Requieren [Apache JMeter](https://jmeter.apache.org/)
+y el backend en ejecución. El plan y las instrucciones están en
+[docs/pruebas-carga/](pruebas-carga/):
+
+```powershell
+jmeter -n -t docs/pruebas-carga/casaketteler-load.jmx -l carga.jtl -Jthreads=20 -Jrampup=10 -Jduration=60
+```
+
+> Para probar en local la validación de asistencia **por red**, la residencia debe tener
+> el SSID/BSSID cargado en `tresidence` (ver [DESPLIEGUE.md 5.1](DESPLIEGUE.md)).
+
 ---
 
 ## 9. Generar el APK

@@ -194,12 +194,12 @@ quede visible en la lista de procesos.
 
 ---
 
-## Pruebas
+### Unitarias
 
-| Proyecto | Cantidad | Enfoque |
-|----------|----------|---------|
-| Backend | 22 | Reglas de negocio con Mockito (sin base de datos) |
-| Frontend | 16 | Lógica pura y reglas de sesión |
+| Proyecto | Cantidad | Herramienta | Enfoque |
+|----------|----------|-------------|---------|
+| Backend | 22 | JUnit 5 + Mockito + AssertJ | Reglas de negocio (sin base de datos) |
+| Frontend | 16 | Vitest | Lógica pura y reglas de sesión |
 
 Se priorizó **cubrir las reglas críticas** antes que alcanzar un porcentaje:
 asistencia (alternancia, espera entre marcas, anomalías), seguridad del login
@@ -207,12 +207,23 @@ asistencia (alternancia, espera entre marcas, anomalías), seguridad del login
 
 Al no depender de la base de datos, corren en segundos y en cualquier computadora.
 
+### Carga y estrés
+
+Con **Apache JMeter 5.6.3** se midió el comportamiento del backend bajo concurrencia
+real contra MySQL. Resultados: soporta 20 usuarios concurrentes con 0 % de error y
+p95 = 661 ms, y **degrada de forma elegante (sin errores) hasta 800 usuarios**, muy por
+encima del uso esperado. El techo de rendimiento se sitúa en ~70–75 peticiones/s.
+
+El detalle completo está en [PRUEBAS.md](PRUEBAS.md) (secciones 8.1–8.3) y el plan de
+pruebas reproducible en [pruebas-carga/](pruebas-carga/).
+
 ---
 
 ## Limitaciones conocidas
 
 | Limitación | Impacto | Camino de solución |
 |------------|---------|--------------------|
+| Red Wi-Fi (SSID/BSSID) cargada a mano | El BSSID del punto de acceso no se puede leer por software (permisos del SO); hay que registrarlo manualmente en `tresidence` y actualizarlo si cambia el router | Documentado como paso de instalación ([DESPLIEGUE.md 5.1](DESPLIEGUE.md)) |
 | Sin HTTPS | El tráfico viaja sin cifrar en la red local | Certificado SSL al publicar fuera |
 | IP fija en la app | Si cambia la IP del servidor hay que regenerar el APK | Nombre de dominio o IP reservada |
 | Respaldos en el mismo disco | Una avería del disco los perdería | Copia periódica a USB o nube |

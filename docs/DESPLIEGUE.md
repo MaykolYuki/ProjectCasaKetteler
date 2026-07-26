@@ -104,6 +104,48 @@ Si traes datos de otra instalación:
 mysql -u root -p casaKetteler < "C:\CasaKetteler\respaldo.sql"
 ```
 
+### 5.1 Registrar la red Wi-Fi de la residencia (paso manual obligatorio)
+
+La validación de asistencia por **ubicación** compara la red del celular contra el
+SSID/BSSID guardados en la tabla `tresidence`. Estos valores **se cargan a mano**: el
+sistema **no puede leer automáticamente el BSSID** del punto de acceso (Windows lo
+restringe por permisos), así que hay que obtenerlo y escribirlo en la base de datos.
+
+> ⚠️ Si la residencia no tiene la red configurada, **ningún residente podrá marcar
+> asistencia** (el sistema responde *"La residencia no tiene una red WiFi configurada"*).
+
+1. Conecta la PC a la red Wi-Fi **oficial** de la residencia.
+2. Obtén el SSID y el BSSID:
+
+   ```powershell
+   netsh wlan show interfaces
+   ```
+
+   Anota **SSID** (nombre de la red) y **BSSID** (MAC del punto de acceso, formato
+   `aa:bb:cc:dd:ee:ff`).
+3. Guárdalos en la residencia correspondiente:
+
+   ```sql
+   UPDATE tresidence
+      SET wifiSsid  = 'NOMBRE_DE_LA_RED',
+          wifiBssid = 'aa:bb:cc:dd:ee:ff'
+    WHERE idResidence = '<id-de-la-residencia>';
+   ```
+
+**Cómo valida el sistema** (importante para decidir qué llenar):
+
+- Si `wifiBssid` **está lleno**, se valida **solo por BSSID** (más estricto: identifica
+  el punto de acceso exacto). El SSID se ignora.
+- Si `wifiBssid` está **vacío**, se usa `wifiSsid` como respaldo (valida por nombre de red).
+- Si **ambos** están vacíos, la asistencia queda bloqueada.
+
+> **Recomendación:** si la residencia tiene **un solo** punto de acceso, usa el **BSSID**
+> (más seguro). Si tiene **varios** (repetidores/malla, cada uno con distinto BSSID),
+> deja el BSSID vacío y configura solo el **SSID**, común a todos.
+>
+> **Cuándo repetir este paso:** si se **cambia el router o el punto de acceso**, su BSSID
+> cambia y hay que actualizar este valor, o los residentes dejarán de poder marcar.
+
 ---
 
 ## 6. Ajustar la configuración a esta PC
