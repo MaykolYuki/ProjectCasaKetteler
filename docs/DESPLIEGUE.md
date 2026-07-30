@@ -64,6 +64,17 @@ Opciones útiles:
 .\instalar.ps1 -RestaurarRespaldo respaldo.sql   # además restaura datos (si la BD está vacía)
 ```
 
+**El instalador también deja lista la red:** crea la regla del Firewall de Windows para
+el puerto 8001 y comprueba, al final, que el sistema **responde desde la red** y no solo
+desde la propia computadora. Sin esa regla el sistema funcionaría en el servidor pero
+ningún celular conectaría, y sin causa visible: Windows normalmente pregunta la primera
+vez, pero aquí nunca lo hace, porque el sistema arranca como SYSTEM desde la tarea
+programada y no hay nadie que responda el aviso.
+
+> ⚠️ Si Windows tiene catalogada la red de la residencia como **pública**, seguirá
+> bloqueando aunque exista la regla. El instalador lo detecta y avisa. Se corrige en
+> *Configuración → Red e Internet*, cambiando esa red a **privada**.
+
 **Qué sigue necesitando mano humana:**
 
 - Instalar **MySQL Server 8** *antes*, y tener a mano la contraseña de `root` (su

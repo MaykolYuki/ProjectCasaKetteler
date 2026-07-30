@@ -244,6 +244,23 @@ function Probar-Puerto {
     return $null -ne (Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue)
 }
 
+# ¿Existe la regla de firewall que crea este instalador?
+#
+# Solo se busca POR NOMBRE, a proposito. Windows no ofrece una consulta rapida
+# "¿que reglas abren el puerto X?": hay que recorrer las reglas una por una
+# preguntando su filtro de puertos, y en un equipo normal (unas 300 reglas
+# entrantes) eso tarda cerca de minuto y medio. Demasiado para un paso que solo
+# informa.
+#
+# La consecuencia es que si otra regla ya abria el puerto, aqui se dira que falta
+# la nuestra. No es grave: crearla igualmente es inofensivo, y quien decide de
+# verdad si los celulares pueden conectarse es la prueba de acceso por red del
+# final, que si es concluyente.
+function Existe-Regla-Firewall {
+    param([string] $Nombre)
+    return $null -ne (Get-NetFirewallRule -DisplayName $Nombre -ErrorAction SilentlyContinue)
+}
+
 function Hay-Internet {
     try {
         return (Test-NetConnection-Simple "pypi.org" 443)
@@ -1190,6 +1207,20 @@ if ($SoloVerificar) {
     $tarea = Get-ScheduledTask -TaskName $TAREA_PROGRAMADA -ErrorAction SilentlyContinue
     if ($tarea) { Ok "La tarea de arranque automatico existe." }
     else { Pendiente "Falta la tarea de arranque automatico." }
+
+    # El firewall es la causa mas habitual de "funciona aqui pero no en el celular".
+    if (Existe-Regla-Firewall "Casa Ketteler (puerto $PUERTO_BACKEND)") {
+        Ok "El firewall tiene la regla para el puerto $PUERTO_BACKEND."
+    } else {
+        Aviso "No esta la regla de firewall de Casa Ketteler para el puerto $PUERTO_BACKEND."
+        Write-Host "              Puede que otra regla ya lo permita. Al instalar se creara la propia." -ForegroundColor Yellow
+    }
+
+    $publicas = Get-NetConnectionProfile -ErrorAction SilentlyContinue |
+                Where-Object { $_.NetworkCategory -eq 'Public' }
+    if ($publicas) {
+        Aviso "Windows considera PUBLICA la red: $(($publicas | ForEach-Object { $_.Name }) -join ', ')"
+    }
 } elseif (-not (Test-Path $lanzador)) {
     Pendiente "Falta iniciar-casa-ketteler.bat: no se puede registrar el arranque automatico."
 } else {
@@ -1209,6 +1240,43 @@ if ($SoloVerificar) {
         Pendiente "Registrar el arranque automatico a mano (DESPLIEGUE.md paso 8)."
     }
 
+    # --- Permiso del firewall para que los celulares alcancen el servidor ---
+    #
+    # Sin esta regla el sistema funciona en esta computadora pero NO desde los
+    # celulares: Windows bloquea las conexiones entrantes al puerto 8001. Windows
+    # suele preguntar la primera vez, pero aqui nunca lo hace, porque el sistema
+    # arranca como SYSTEM desde la tarea programada, sin nadie que responda el aviso.
+    # El resultado seria "la app no conecta" sin ninguna causa aparente.
+    $reglaFw = "Casa Ketteler (puerto $PUERTO_BACKEND)"
+    if (Existe-Regla-Firewall $reglaFw) {
+        Saltado "La regla de firewall para el puerto $PUERTO_BACKEND ya existe."
+    } else {
+        try {
+            New-NetFirewallRule -DisplayName $reglaFw `
+                -Description "Permite que los celulares de los residentes lleguen al sistema." `
+                -Direction Inbound -Protocol TCP -LocalPort $PUERTO_BACKEND `
+                -Action Allow -Profile Private,Domain -ErrorAction Stop | Out-Null
+            Ok "Firewall: permitido el puerto $PUERTO_BACKEND para la red local."
+        } catch {
+            Pendiente "Permitir el puerto $PUERTO_BACKEND en el Firewall de Windows; sin eso los celulares no conectan."
+            Escribir-Log "Fallo al crear la regla de firewall: $($_.Exception.Message)" "AVISO"
+        }
+    }
+
+    # La regla anterior cubre las redes Privada y de Dominio. Si Windows tiene
+    # catalogada la red de la residencia como Publica, seguira bloqueando.
+    try {
+        $publicas = Get-NetConnectionProfile -ErrorAction SilentlyContinue |
+                    Where-Object { $_.NetworkCategory -eq 'Public' }
+        if ($publicas) {
+            $nombres = ($publicas | ForEach-Object { $_.Name }) -join ', '
+            Aviso "Windows considera PUBLICA la red: $nombres"
+            Write-Host "              Mientras siga asi, los celulares no podran conectarse." -ForegroundColor Yellow
+            Write-Host "              Cambiala a Privada en Configuracion -> Red e Internet," -ForegroundColor Yellow
+            Write-Host "              o ejecuta:  Set-NetConnectionProfile -Name '$($publicas[0].Name)' -NetworkCategory Private" -ForegroundColor Yellow
+        }
+    } catch { }
+
     # --- Verificacion real: arrancar y comprobar que responde ---
     if ($jar -and (Test-Path $venvPy) -and $script:Pendientes.Count -eq 0) {
         Write-Host ""
@@ -1225,17 +1293,53 @@ if ($SoloVerificar) {
         }
 
         if ($backendOk) {
+            # 1) Desde la propia computadora.
             try {
                 $r = Invoke-WebRequest -Uri "http://localhost:$PUERTO_BACKEND/casaketteler/attendance/health" `
                         -UseBasicParsing -TimeoutSec 15
-                if ($r.StatusCode -eq 200) { Ok "El sistema responde correctamente (health = 200)." }
+                if ($r.StatusCode -eq 200) { Ok "El sistema responde en esta computadora." }
             } catch {
                 Aviso "El puerto esta abierto pero la comprobacion de salud fallo: $($_.Exception.Message)"
+            }
+
+            # 2) Desde la RED, que es lo que de verdad importa: si esto falla, la
+            #    computadora se ve a si misma pero ningun celular llega. Probar solo
+            #    localhost da un falso aprobado, porque localhost nunca pasa por el
+            #    firewall.
+            if ($ipLocal) {
+                try {
+                    $r2 = Invoke-WebRequest -Uri "http://${ipLocal}:$PUERTO_BACKEND/casaketteler/attendance/health" `
+                            -UseBasicParsing -TimeoutSec 15
+                    if ($r2.StatusCode -eq 200) {
+                        Ok "El sistema responde desde la red (http://${ipLocal}:$PUERTO_BACKEND)."
+                        Ok "Los celulares de los residentes podran conectarse."
+                    }
+                } catch {
+                    Pendiente "El sistema no responde desde la red: los celulares no podran conectarse."
+                    Write-Host "              Revisa el Firewall de Windows y que la red sea Privada." -ForegroundColor Yellow
+                    Escribir-Log "Prueba de red fallida: $($_.Exception.Message)" "AVISO"
+                }
             }
         } else {
             Fallo "El backend no arranco." "Revisa logs\backend.error.log"
         }
-        if (-not $pythonListo) {
+
+        # 3) El reconocimiento facial: que el puerto este abierto no basta, el
+        #    servicio puede estar levantado y con los modelos rotos.
+        if ($pythonListo) {
+            try {
+                $r3 = Invoke-WebRequest -Uri "http://localhost:$PUERTO_PYTHON/health" `
+                        -UseBasicParsing -TimeoutSec 20
+                if ($r3.Content -match '"?status"?\s*:\s*"?ok') {
+                    Ok "El reconocimiento facial responde correctamente."
+                } else {
+                    Aviso "El reconocimiento facial responde, pero no confirma estar listo."
+                }
+            } catch {
+                Aviso "El reconocimiento facial escucha pero no responde: $($_.Exception.Message)"
+                Write-Host "              Revisa logs\reconocimiento.error.log" -ForegroundColor Yellow
+            }
+        } else {
             Aviso "El reconocimiento facial no arranco todavia. Revisa logs\reconocimiento.error.log"
         }
     } else {
