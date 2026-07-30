@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 #  CASA KETTELER - Actualizar la interfaz web (Angular) que sirve el backend
 # ============================================================================
 #  Copia el build de Angular a la carpeta 'frontend', desde donde el backend la
@@ -7,9 +7,21 @@
 #  NO hace falta regenerar el JAR: la carpeta es externa. Basta reiniciar (o ni eso,
 #  porque los archivos se leen en cada petición).
 #
-#  Antes de ejecutarlo, genera el build en el proyecto del front:
-#     npx ng build
+#  COMPILA SOLO antes de copiar, con la configuración "web": esa usa una URL
+#  relativa (/casaketteler) en vez de una IP fija, porque el backend sirve esta
+#  interfaz desde el mismo origen. Así funciona en cualquier red sin recompilar.
+#  (La app Android es distinta: usa la configuración "production", con la IP
+#  absoluta, porque se carga desde capacitor://localhost.)
+#
+#  Uso:
+#     .\actualizar-frontend.ps1              # compila y copia
+#     .\actualizar-frontend.ps1 -SinCompilar # solo copia lo que ya haya en dist
 # ============================================================================
+
+param(
+    # Omite la compilación y copia el build existente. Útil si acabas de compilar.
+    [switch] $SinCompilar
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -18,10 +30,24 @@ $proyectoFront = "C:\Users\yerry\Documents\Ingenieria de Software\II\Front Kette
 $origen = Join-Path $proyectoFront "dist\front-ketteler\browser"
 $destino = Join-Path $PSScriptRoot "frontend"
 
+if (-not $SinCompilar) {
+    Write-Host ""
+    Write-Host "  Compilando la interfaz web (configuración 'web')..." -ForegroundColor Cyan
+    Push-Location $proyectoFront
+    try {
+        & npm run build:web
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  ERROR: fallo la compilacion de Angular." -ForegroundColor Red
+            Read-Host "Presiona ENTER para cerrar"
+            exit 1
+        }
+    } finally { Pop-Location }
+}
+
 if (-not (Test-Path $origen)) {
     Write-Host "ERROR: no se encontro el build de Angular en:" -ForegroundColor Red
     Write-Host "  $origen" -ForegroundColor Red
-    Write-Host "Genera primero el build con:  npx ng build" -ForegroundColor Yellow
+    Write-Host "Genera el build con:  npm run build:web" -ForegroundColor Yellow
     Read-Host "Presiona ENTER para cerrar"
     exit 1
 }
