@@ -81,3 +81,6 @@ todo_el_codigo_proyecto.txt
 # Resultado de construir-instalador.ps1 (se regenera; el .exe pesa ~73 MB)
 instalador/carga/
 instalador/salida/
+
+# Resultado de preparar-entrega.ps1 (se regenera)
+entrega/
