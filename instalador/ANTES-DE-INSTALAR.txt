@@ -1,0 +1,63 @@
+CASA KETTELER - Sistema de registro de asistencia
+=================================================
+
+QUE HACE ESTE INSTALADOR
+
+  Copia el sistema completo y luego prepara la computadora: crea la base de
+  datos, instala las librerias del reconocimiento facial y deja el sistema
+  arrancando solo cada vez que se encienda la PC.
+
+
+ANTES DE CONTINUAR, COMPRUEBA TRES COSAS
+----------------------------------------
+
+  1. MYSQL SERVER 8 YA INSTALADO
+
+     Es lo unico que este instalador NO puede poner por ti, porque su propio
+     asistente pide que definas la contrasena del usuario "root".
+
+     Descarga:  https://dev.mysql.com/downloads/installer/
+
+     Ten a mano esa contrasena: se te pedira durante la preparacion.
+
+
+  2. CONEXION A INTERNET (la primera vez)
+
+     Las librerias de reconocimiento facial pesan unos 2 GB y se descargan
+     ahora. Si la conexion se corta, NO se pierde el trabajo: vuelve a
+     ejecutar este instalador y continuara donde quedo.
+
+     (Si te entregaron el instalador con los paquetes incluidos, no hace
+     falta Internet.)
+
+
+  3. ESPACIO EN DISCO: al menos 6 GB libres
+
+
+CUANTO TARDA
+------------
+
+  Copiar los archivos       menos de 1 minuto
+  Preparar el entorno       entre 20 y 45 minutos, segun la conexion
+
+  Puedes dejarlo trabajando: la ventana muestra el avance paso a paso.
+
+
+QUE QUEDA PENDIENTE DESPUES
+---------------------------
+
+  * Registrar la red Wi-Fi de la residencia (SSID/BSSID). Sin este dato
+    ningun residente puede marcar asistencia. El instalador lo intenta leer
+    solo y avisa si no pudo.
+
+  * El correo desde el que se envian las contrasenas temporales.
+
+  Ambos puntos apareceran listados al final, en la seccion "FALTA HACER".
+
+
+SI ALGO SALE MAL
+----------------
+
+  Todo queda registrado en la carpeta "logs" dentro de la instalacion.
+  Puedes volver a ejecutar el instalador tantas veces como quieras: no
+  repite lo que ya estaba hecho.

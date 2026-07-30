@@ -735,16 +735,38 @@ if (-not (Test-Path $requisitos)) {
     $comunes = @("--cache-dir", $cachePip, "--retries", "10", "--timeout", "120",
                  "--disable-pip-version-check")
 
+    # Si el instalador vino con los paquetes incluidos, se instala SIN INTERNET
+    # desde esa carpeta. Es lo que hace la opcion -SinInternet al construir el .exe.
+    $paquetesLocales = Join-Path $Carpeta "paquetes-python"
+    $sinRed = (Test-Path $paquetesLocales) -and
+              ((Get-ChildItem $paquetesLocales -File -ErrorAction SilentlyContinue).Count -gt 0)
+
+    $listaRequisitos = $requisitos
+    if ($sinRed) {
+        $cuantos = (Get-ChildItem $paquetesLocales -File).Count
+        Ok "Se encontraron $cuantos paquetes incluidos: se instalara sin Internet."
+        $origen = @("--no-index", "--find-links", $paquetesLocales)
+
+        # requirements.txt declara el indice de PyTorch, que choca con --no-index.
+        # Se usa una copia sin esa linea para que pip no intente salir a la red.
+        $listaRequisitos = Join-Path $carpetaLogs "requisitos-sin-indice.txt"
+        Get-Content $requisitos |
+            Where-Object { $_ -notmatch '^\s*--(extra-)?index-url' } |
+            Set-Content -Path $listaRequisitos -Encoding ASCII
+        Info "Lista de dependencias adaptada para instalacion sin red."
+    } else {
+        $origen = @("--extra-index-url", $INDICE_TORCH)
+    }
+
     $fases = @(
         @{ Clave = "pip-herramientas"; Nombre = "Herramientas de instalacion";
-           Args = @("install") + $comunes + @("--upgrade", "pip", "setuptools", "wheel") },
+           Args = @("install") + $comunes + $origen + @("--upgrade", "pip", "setuptools", "wheel") },
         @{ Clave = "pip-torch";        Nombre = "PyTorch para CPU (~250 MB)";
-           Args = @("install") + $comunes + @("--extra-index-url", $INDICE_TORCH,
-                    "torch==2.12.0+cpu", "torchvision==0.27.0+cpu") },
+           Args = @("install") + $comunes + $origen + @("torch==2.12.0+cpu", "torchvision==0.27.0+cpu") },
         @{ Clave = "pip-tensorflow";   Nombre = "TensorFlow (~600 MB)";
-           Args = @("install") + $comunes + @("tensorflow==2.21.0", "tf_keras==2.21.0") },
+           Args = @("install") + $comunes + $origen + @("tensorflow==2.21.0", "tf_keras==2.21.0") },
         @{ Clave = "pip-resto";        Nombre = "Resto de dependencias";
-           Args = @("install") + $comunes + @("--extra-index-url", $INDICE_TORCH, "-r", $requisitos) }
+           Args = @("install") + $comunes + $origen + @("-r", $listaRequisitos) }
     )
 
     $todoBien = $true

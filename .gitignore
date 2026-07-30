@@ -77,3 +77,7 @@ temp/
 
 # Volcado del codigo generado por empaquetar_todo.sh (el codigo real ya esta en el repo)
 todo_el_codigo_proyecto.txt
+
+# Resultado de construir-instalador.ps1 (se regenera; el .exe pesa ~73 MB)
+instalador/carga/
+instalador/salida/

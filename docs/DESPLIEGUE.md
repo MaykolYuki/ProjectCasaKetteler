@@ -7,10 +7,38 @@ Cómo instalar el sistema en la PC que quedará operando en la residencia.
 
 ---
 
-## Camino rápido: el instalador
+## Camino rápido: un solo archivo
 
-Los pasos 2 al 8 de esta guía están automatizados. Tras copiar los archivos (paso 1
-y 3), basta con:
+**En tu computadora**, genera el instalador:
+
+```powershell
+.\construir-instalador.ps1                  # ~73 MB
+.\construir-instalador.ps1 -ConModelos      # ~330 MB, evita bajar los modelos allá
+.\construir-instalador.ps1 -SinInternet     # ~2.5 GB, instala sin red en destino
+```
+
+Queda en `instalador\salida\CasaKetteler-Instalador-1.0.exe`. **Ese único archivo es
+todo lo que llevas** — dentro van el backend, la interfaz web, los scripts de
+reconocimiento, la documentación y el instalador.
+
+**En la computadora de la residencia:**
+
+```
+clic derecho en  CasaKetteler-Instalador-1.0.exe  ->  Ejecutar como administrador
+```
+
+Asistente en español: acepta, elige carpeta (por defecto `C:\CasaKetteler`) y listo.
+Copia los archivos, prepara el entorno, crea los accesos en el menú Inicio y deja el
+sistema arrancando solo al encender la PC. Trae desinstalador.
+
+> **Por qué `C:\CasaKetteler` y no *Archivos de programa*:** el sistema escribe
+> continuamente en `storage\`, `logs\` y `backups\`, y dentro de *Archivos de programa*
+> Windows lo bloquearía.
+
+### Alternativa: solo los scripts
+
+Si prefieres copiar los archivos a mano (paso 1 y 3 de esta guía), la preparación del
+entorno también se puede lanzar sola:
 
 ```
 clic derecho en  instalar.bat  ->  Ejecutar como administrador
@@ -38,11 +66,18 @@ Opciones útiles:
 
 **Qué sigue necesitando mano humana:**
 
-- Instalar **MySQL Server 8** (su asistente pide definir la contraseña de `root`; el
-  instalador lo detecta y avisa, pero no lo hace por ti).
+- Instalar **MySQL Server 8** *antes*, y tener a mano la contraseña de `root` (su
+  asistente obliga a definirla, por eso no se automatiza). El instalador lo detecta y
+  avisa si falta.
 - El **correo** para enviar contraseñas temporales (`MAIL_USERNAME` / `MAIL_PASSWORD`).
 - El **SSID/BSSID** de la residencia (paso 5.1): el instalador lo intenta leer y lo
   guarda solo si Windows lo permite y la residencia ya está registrada.
+- **Permisos de administrador** en esa PC. Sin ellos el instalador se detiene: los
+  necesita para el arranque automático y el servicio de MySQL.
+
+> ⚠️ **Si es una PC de laboratorio o de uso compartido**, comprueba que no se restaure
+> al reiniciar (Deep Freeze y similares): en ese caso la instalación desaparece al
+> apagar, y solo sirve para demostrar.
 
 El resto de esta guía explica los mismos pasos **a mano**, por si algo falla o hay que
 entender qué ocurre por dentro.
