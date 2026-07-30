@@ -1,3 +1,7 @@
+# torch y torchvision "+cpu" NO estan en PyPI: solo en el indice de PyTorch.
+# Sin esta linea, "pip install -r requirements.txt" falla en una PC nueva.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 absl-py==2.4.0
 astunparse==1.6.3
 beautifulsoup4==4.14.3

@@ -7,6 +7,48 @@ Cómo instalar el sistema en la PC que quedará operando en la residencia.
 
 ---
 
+## Camino rápido: el instalador
+
+Los pasos 2 al 8 de esta guía están automatizados. Tras copiar los archivos (paso 1
+y 3), basta con:
+
+```
+clic derecho en  instalar.bat  ->  Ejecutar como administrador
+```
+
+El instalador comprueba los programas base, crea las carpetas, genera el `.env` (con
+un `JWT_SECRET` nuevo y la IP de la PC), prepara la base de datos, instala el entorno
+de Python, deja los modelos listos, registra el arranque automático y termina
+comprobando que el sistema responde.
+
+| Detalle | Comportamiento |
+|---------|----------------|
+| **Se puede repetir** | Cada paso mira si ya está hecho y se salta lo que no hace falta. |
+| **Se reanuda** | Si se corta a mitad (por ejemplo, se cae la conexión durante los ~2 GB de librerías), al volver a ejecutarlo continúa donde quedó: lo ya descargado se reutiliza. |
+| **No destruye nada** | Respeta un `.env` existente (solo completa lo que falte, y guarda una copia del anterior) y **no** restaura un respaldo sobre una base de datos con datos. |
+| **Deja registro** | Todo queda en `logs\instalacion.log`; el avance, en `logs\instalacion-estado.json`. |
+| **Dice qué falta** | Termina con una lista de pendientes. Código de salida `0` = completo, `2` = quedan pendientes. |
+
+Opciones útiles:
+
+```powershell
+.\instalar.ps1 -SoloVerificar                    # revisa el estado sin cambiar nada
+.\instalar.ps1 -RestaurarRespaldo respaldo.sql   # además restaura datos (si la BD está vacía)
+```
+
+**Qué sigue necesitando mano humana:**
+
+- Instalar **MySQL Server 8** (su asistente pide definir la contraseña de `root`; el
+  instalador lo detecta y avisa, pero no lo hace por ti).
+- El **correo** para enviar contraseñas temporales (`MAIL_USERNAME` / `MAIL_PASSWORD`).
+- El **SSID/BSSID** de la residencia (paso 5.1): el instalador lo intenta leer y lo
+  guarda solo si Windows lo permite y la residencia ya está registrada.
+
+El resto de esta guía explica los mismos pasos **a mano**, por si algo falla o hay que
+entender qué ocurre por dentro.
+
+---
+
 ## 1. Qué preparar antes de ir
 
 Compila todo en tu computadora de desarrollo:
@@ -30,7 +72,8 @@ Copia a una USB:
 | Contenido de `browser\` | `dist\front-ketteler\` | La interfaz web |
 | Carpeta `python_scripts\` | raíz del proyecto | **Sin** `venv_perfecto` (ver paso 4) |
 | `.env` y `application.properties` | raíz y `src\main\resources\` | Se ajustan allá |
-| Los 4 scripts `.bat` / `.ps1` | raíz | Encender, apagar, actualizar |
+| Los scripts `.bat` / `.ps1` | raíz | Encender, apagar, actualizar e **instalar** |
+| `instalar.bat` + `instalar.ps1` | raíz | El instalador automático (ver arriba) |
 | Respaldo `.sql` | `backups\` | Si migras datos existentes |
 | `app-release.apk` | `android\app\build\outputs\apk\release\` | Para los residentes |
 
