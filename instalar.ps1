@@ -740,6 +740,12 @@ if (-not $SoloVerificar) {
     Poner-Clave "DB_NAME"     $NOMBRE_BD
     Poner-Clave "DB_USERNAME" "root"
 
+    # El perfil 'prod' arma la conexion con DB_URL (una sola cadena), no con
+    # DB_HOST/DB_PORT/DB_NAME por separado. Sin esta clave el backend no arranca.
+    $urlBd = "jdbc:mysql://localhost:3306/$NOMBRE_BD" +
+             "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima"
+    Poner-Clave "DB_URL" $urlBd
+
     # Clave de firma de sesiones: aleatoria y distinta en cada instalacion.
     $secreto = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
     Poner-Clave "JWT_SECRET" $secreto -NoMostrar
@@ -782,6 +788,33 @@ if (-not $SoloVerificar) {
     Set-Content -Path $archivoEnv -Value $texto -Encoding UTF8
     Ok ".env escrito con $($claves.Count) valores."
     Marcar-Hecho "env"
+
+    # El perfil 'prod' que viaja dentro del JAR trae ddl-auto=validate, es decir
+    # exige que las tablas YA existan. En una instalacion nueva la base esta
+    # vacia y el backend no arranca. Este archivo, al estar junto al JAR, tiene
+    # prioridad sobre el de dentro y deja que Hibernate cree el esquema.
+    $propsProd = Join-Path $Carpeta "application-prod.properties"
+    if (Test-Path $propsProd) {
+        Saltado "application-prod.properties ya existe (no se toca)."
+    } else {
+        $lineasProd = @(
+            "# Generado por instalar.ps1: ajustes del perfil 'prod' para ESTA instalacion.",
+            "# Tiene prioridad sobre el application-prod.properties incluido en el JAR.",
+            "",
+            "spring.datasource.url=`${DB_URL}",
+            "spring.datasource.username=`${DB_USERNAME}",
+            "spring.datasource.password=`${DB_PASSWORD}",
+            "spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver",
+            "",
+            "# 'update' y no 'validate': en una instalacion nueva las tablas no",
+            "# existen todavia y hay que dejar que Hibernate las cree.",
+            "spring.jpa.generate-ddl=true",
+            "spring.jpa.hibernate.ddl-auto=update",
+            "spring.jpa.show-sql=false"
+        )
+        Set-Content -Path $propsProd -Value $lineasProd -Encoding UTF8
+        Ok "application-prod.properties escrito (permite crear el esquema)."
+    }
 } else {
     if (Test-Path $archivoEnv) { Ok ".env presente." } else { Pendiente "Falta el archivo .env" }
 }
