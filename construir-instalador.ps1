@@ -24,6 +24,10 @@ param(
     # Usalo si la red de destino es lenta o restringida.
     [switch] $SinInternet,
 
+    # NO incluye el instalador de Python (ahorra 25 MB, pero en destino hara
+    # falta instalarlo a mano si no lo tiene).
+    [switch] $SinPython,
+
     # Compila el backend antes de empaquetar.
     [switch] $Compilar
 )
@@ -140,6 +144,34 @@ foreach ($d in @("OPERACION.md", "DESPLIEGUE.md", "ARQUITECTURA.md", "README.md"
     if (Test-Path $ruta) { Copy-Item $ruta $docsDestino -Force }
 }
 Ok "Documentacion de operacion."
+
+# --- Instalador de Python (siempre, salvo -SinPython) ---
+# Se incluye a proposito: winget esta restringido en muchos equipos de
+# laboratorio o de dominio, y sin Python no hay reconocimiento facial.
+if (-not $SinPython) {
+    $versionPy = "3.12.10"
+    $carpetaReq = Join-Path $carga "requisitos"
+    New-Item -ItemType Directory -Path $carpetaReq -Force | Out-Null
+
+    # Se guarda una copia local para no volver a bajarlo en cada construccion.
+    $cachePy = Join-Path $raiz "instalador\cache"
+    if (-not (Test-Path $cachePy)) { New-Item -ItemType Directory -Path $cachePy -Force | Out-Null }
+    $archivoPy = Join-Path $cachePy "python-$versionPy-amd64.exe"
+
+    if (-not (Test-Path $archivoPy)) {
+        Nota "Descargando el instalador de Python $versionPy (25 MB)..."
+        try {
+            Invoke-WebRequest -Uri "https://www.python.org/ftp/python/$versionPy/python-$versionPy-amd64.exe" `
+                              -OutFile "$archivoPy.part" -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
+            Move-Item "$archivoPy.part" $archivoPy -Force
+        } catch {
+            Morir "No se pudo descargar el instalador de Python." `
+                  "Comprueba la conexion, o construye con -SinPython (en destino hara falta instalarlo a mano)."
+        }
+    }
+    Copy-Item $archivoPy $carpetaReq -Force
+    Ok ("Instalador de Python {0} incluido ({1:N0} MB)." -f $versionPy, ((Get-Item $archivoPy).Length / 1MB))
+}
 
 # --- Modelos de reconocimiento (opcional) ---
 if ($ConModelos) {

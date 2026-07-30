@@ -46,6 +46,7 @@ $ErrorActionPreference = "Continue"
 # ---------------------------------------------------------------------------
 $JAVA_MINIMO      = 21
 $PYTHON_SOPORTADO = @("3.10", "3.11", "3.12")
+$VERSION_PYTHON   = "3.12.10"   # la que se instala si falta (descarga de python.org)
 $PUERTO_BACKEND   = 8001
 $PUERTO_PYTHON    = 5000
 $NOMBRE_BD        = "casaKetteler"
@@ -249,6 +250,94 @@ function Instalar-Con-Winget {
     return (Reintentar -Accion $accion -Descripcion "instalacion de $Nombre" -Intentos 2 -EsperaBase 10)
 }
 
+# Descarga un archivo con reintentos. Guarda en .part y solo lo da por bueno si
+# el tamano coincide con el que anuncio el servidor.
+function Descargar-Archivo {
+    param([string] $Url, [string] $Destino, [string] $Nombre = "archivo")
+
+    if (Test-Path $Destino) { return $true }
+    $parcial = "$Destino.part"
+
+    $bajar = {
+        if (Test-Path $parcial) { Remove-Item $parcial -Force -ErrorAction SilentlyContinue }
+        $antes = $ProgressPreference
+        $ProgressPreference = "Continue"
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $parcial -UseBasicParsing -TimeoutSec 180 -ErrorAction Stop
+        } finally { $ProgressPreference = $antes }
+
+        # Comprobacion de que llego completo.
+        $esperado = 0
+        try {
+            $cab = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+            $esperado = [int64]$cab.Headers['Content-Length']
+        } catch { }
+        $real = (Get-Item $parcial).Length
+        if ($esperado -gt 0 -and $real -ne $esperado) {
+            Remove-Item $parcial -Force -ErrorAction SilentlyContinue
+            throw "la descarga quedo incompleta ($real de $esperado bytes)"
+        }
+        Move-Item -Path $parcial -Destination $Destino -Force -ErrorAction Stop
+    }
+
+    return (Reintentar -Accion $bajar -Descripcion "descarga de $Nombre" -Intentos 3 -EsperaBase 8)
+}
+
+# Instala Python 3.12 SIN depender de winget, que en equipos administrados
+# (laboratorios, dominios) suele estar restringido por politica.
+# Orden: 1) el instalador que viene incluido  2) descarga de python.org
+#        3) winget, como ultimo recurso.
+function Instalar-Python {
+    $carpetaReq = Join-Path $Carpeta "requisitos"
+    $instaladorPy = $null
+
+    # 1) ¿Vino incluido en el paquete?
+    if (Test-Path $carpetaReq) {
+        $instaladorPy = Get-ChildItem (Join-Path $carpetaReq "python-3.12*-amd64.exe") -ErrorAction SilentlyContinue |
+                        Select-Object -First 1 | ForEach-Object { $_.FullName }
+        if ($instaladorPy) { Ok "Se usara el instalador de Python incluido en el paquete." }
+    }
+
+    # 2) Descargarlo de python.org
+    if (-not $instaladorPy) {
+        $descargas = Join-Path $carpetaLogs "descargas"
+        if (-not (Test-Path $descargas)) { New-Item -ItemType Directory -Path $descargas -Force | Out-Null }
+        $destino = Join-Path $descargas "python-$VERSION_PYTHON-amd64.exe"
+        Info "Descargando Python $VERSION_PYTHON de python.org (25 MB)..."
+        if (Descargar-Archivo "https://www.python.org/ftp/python/$VERSION_PYTHON/python-$VERSION_PYTHON-amd64.exe" `
+                              $destino "Python $VERSION_PYTHON") {
+            $instaladorPy = $destino
+        }
+    }
+
+    # 3) Ejecutarlo en silencio
+    if ($instaladorPy) {
+        Info "Instalando Python (sin ventanas, tarda un par de minutos)..."
+        $ejecutar = {
+            $p = Start-Process -FilePath $instaladorPy -Wait -PassThru -ArgumentList @(
+                "/quiet", "InstallAllUsers=1", "PrependPath=1",
+                "Include_launcher=1", "Include_test=0", "SimpleInstall=1"
+            )
+            # 0 = instalado, 3010 = instalado pero pide reinicio
+            if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+                throw "el instalador de Python devolvio el codigo $($p.ExitCode)"
+            }
+        }
+        if (Reintentar -Accion $ejecutar -Descripcion "instalacion de Python" -Intentos 2 -EsperaBase 10) {
+            Refrescar-Path
+            return $true
+        }
+    }
+
+    # 4) Ultimo recurso: winget
+    Aviso "Se intentara con winget como ultimo recurso."
+    if (Instalar-Con-Winget "Python.Python.3.12" "Python 3.12") {
+        Refrescar-Path
+        return $true
+    }
+    return $false
+}
+
 function Refrescar-Path {
     # Tras instalar algo, el PATH de esta sesion no lo conoce todavia.
     $maquina = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
@@ -386,19 +475,28 @@ foreach ($c in $candidatos) {
 }
 
 if (-not $pythonOk -and -not $SoloVerificar) {
-    if (Instalar-Con-Winget "Python.Python.3.12" "Python 3.12") {
-        Refrescar-Path
-        $p = Buscar-Programa "py"
-        if ($p) {
-            $r = Ejecutar-Nativo $p @("-3.12", "-c", "print('ok')")
-            if ($r.Codigo -eq 0) {
-                $pythonExe = $p; $pythonArgs = @("-3.12"); $pythonOk = $true
-                Ok "Python 3.12 instalado."
+    if (Instalar-Python) {
+        # Se vuelve a buscar, igual que arriba: puede haber quedado como
+        # "py -3.12" o como el "python" del PATH.
+        foreach ($c in $candidatos) {
+            $p = Buscar-Programa $c.Programa
+            if (-not $p) { continue }
+            $r = Ejecutar-Nativo $p ($c.Previos + @("-c", "import sys; print('%d.%d' % sys.version_info[:2])"))
+            if ($r.Codigo -eq 0 -and ($PYTHON_SOPORTADO -contains $r.Texto.Trim())) {
+                $pythonExe = $p; $pythonArgs = $c.Previos; $pythonOk = $true
+                Ok "Python $($r.Texto.Trim()) instalado ($($c.Etiqueta))."
+                break
             }
+        }
+        if (-not $pythonOk) {
+            Aviso "Python quedo instalado pero aun no aparece en el PATH de esta ventana."
+            Pendiente "Cierra esta ventana y vuelve a ejecutar el instalador: Python ya estara disponible."
         }
     }
 }
-if (-not $pythonOk) { Pendiente "Instalar Python 3.12 marcando 'Add Python to PATH' (https://www.python.org/downloads/)" }
+if (-not $pythonOk) {
+    Pendiente "Instalar Python 3.12 marcando 'Add Python to PATH' (https://www.python.org/downloads/)"
+}
 
 # --- MySQL 8 ---
 # No se instala en silencio a proposito: el instalador de MySQL pide configurar

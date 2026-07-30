@@ -84,6 +84,11 @@ Source: "{#Carga}\application.properties"; DestDir: "{app}";          Flags: ign
 ; --- Documentacion de operacion ---
 Source: "{#Carga}\docs\*";           DestDir: "{app}\docs";           Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
 
+; --- Instalador de Python incluido (si se incluyo) ---
+; Evita depender de winget, que suele estar restringido en equipos de laboratorio.
+Source: "{#Carga}\requisitos\*";      DestDir: "{app}\requisitos";     \
+  Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
+
 ; --- Modelos de reconocimiento ya descargados (si se incluyeron) ---
 ; Ahorra unos 260 MB de descarga en la PC de destino.
 Source: "{#Carga}\python_scripts\.deepface\*"; DestDir: "{app}\python_scripts\.deepface"; \

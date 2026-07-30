@@ -84,3 +84,4 @@ instalador/salida/
 
 # Resultado de preparar-entrega.ps1 (se regenera)
 entrega/
+instalador/cache/
