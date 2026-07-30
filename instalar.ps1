@@ -41,6 +41,12 @@ param(
 # mano con "throw" dentro de cada paso.
 $ErrorActionPreference = "Continue"
 
+# Al capturar la salida de Python, Windows usa cp1252 en vez de UTF-8. Varias
+# librerias (DeepFace, por ejemplo) escriben emojis en sus mensajes, y al no
+# poder representarlos en cp1252 el print revienta con UnicodeEncodeError y
+# tumba la operacion entera (incluida la descarga de los modelos). Esto lo evita.
+$env:PYTHONIOENCODING = "utf-8"
+
 # ---------------------------------------------------------------------------
 #  Constantes
 # ---------------------------------------------------------------------------
@@ -748,6 +754,10 @@ if (-not $SoloVerificar) {
     # que tiene otro perfil, y volveria a descargar los 260 MB de modelos.
     Poner-Clave "DEEPFACE_HOME" "$rutaBarras/python_scripts"
 
+    # Sin esto, el servidor de reconocimiento se cae al escribir en su registro:
+    # DeepFace usa emojis en los mensajes y la salida redirigida va en cp1252.
+    Poner-Clave "PYTHONIOENCODING" "utf-8"
+
     $origenes = @("http://localhost:$PUERTO_BACKEND", "capacitor://localhost", "http://localhost")
     if ($ipLocal) { $origenes += "http://${ipLocal}:$PUERTO_BACKEND" }
     Poner-Clave "CORS_ALLOWED_ORIGINS" ($origenes -join ",")
@@ -1049,11 +1059,45 @@ if ($SoloVerificar -or -not (Test-Path $venvPy)) {
         Escribir-Log $r "MODELOS"
         if ($r -notmatch "MODELOS_OK") { throw "no se completo la preparacion de los modelos" }
     }
-    if (Reintentar -Accion $descargarModelos -Descripcion "preparacion de modelos" -Intentos 3 -EsperaBase 10) {
-        Ok "Modelos listos en python_scripts\.deepface\"
+    $modelosListos = Reintentar -Accion $descargarModelos -Descripcion "preparacion de modelos" -Intentos 2 -EsperaBase 10
+
+    # PLAN B: bajar los modelos con Windows en vez de con Python.
+    # Python valida los certificados con su propio paquete de CA; en redes que
+    # inspeccionan el trafico (universidades, empresas) eso falla. Windows usa
+    # su almacen de certificados, que si suele tener la CA de la institucion.
+    if (-not $modelosListos) {
+        Aviso "Python no pudo descargar los modelos. Se intentara con Windows."
+        if (-not (Test-Path $pesosDestino)) { New-Item -ItemType Directory -Path $pesosDestino -Force | Out-Null }
+
+        $modelos = @(
+            @{ Nombre = "arcface_weights.h5";                    Url = "https://github.com/serengil/deepface_models/releases/download/v1.0/arcface_weights.h5" },
+            @{ Nombre = "deploy.prototxt";                       Url = "https://github.com/opencv/opencv/raw/3.4.0/samples/dnn/face_detector/deploy.prototxt" },
+            @{ Nombre = "res10_300x300_ssd_iter_140000.caffemodel"; Url = "https://github.com/opencv/opencv_3rdparty/raw/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel" },
+            @{ Nombre = "2.7_80x80_MiniFASNetV2.pth";            Url = "https://github.com/minivision-ai/Silent-Face-Anti-Spoofing/raw/master/resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth" },
+            @{ Nombre = "4_0_0_80x80_MiniFASNetV1SE.pth";        Url = "https://github.com/minivision-ai/Silent-Face-Anti-Spoofing/raw/master/resources/anti_spoof_models/4_0_0_80x80_MiniFASNetV1SE.pth" }
+        )
+
+        $faltaAlguno = $false
+        foreach ($m in $modelos) {
+            $ruta = Join-Path $pesosDestino $m.Nombre
+            if (Test-Path $ruta) { Saltado $m.Nombre; continue }
+            Info "Descargando $($m.Nombre)..."
+            if (Descargar-Archivo $m.Url $ruta $m.Nombre) { Ok $m.Nombre }
+            else { $faltaAlguno = $true; Aviso "No se pudo bajar $($m.Nombre)." }
+        }
+
+        if (-not $faltaAlguno) {
+            # Se comprueba que DeepFace realmente los cargue.
+            $modelosListos = Reintentar -Accion $descargarModelos -Descripcion "comprobacion de modelos" -Intentos 1
+        }
+    }
+
+    if ($modelosListos) {
+        Ok "Modelos listos en python_scripts\.deepface\weights\"
         Marcar-Hecho "modelos"
     } else {
         Aviso "Los modelos no quedaron listos. Se descargaran solos en el primer reconocimiento (esa primera marca tardara mas)."
+        Aviso "Si la red bloquea la descarga, copialos a mano en: $pesosDestino"
     }
 }
 

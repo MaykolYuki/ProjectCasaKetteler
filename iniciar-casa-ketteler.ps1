@@ -64,6 +64,12 @@ Get-Content $envFile | ForEach-Object {
 # El servidor Python espera STORAGE_PATH; en el .env la variable se llama APP_STORAGE_PATH.
 $env:STORAGE_PATH = $env:APP_STORAGE_PATH
 
+# La salida del servidor Python va a un archivo de registro, y en ese caso Windows
+# usa cp1252 en vez de UTF-8. DeepFace escribe emojis en sus mensajes, que no
+# existen en cp1252: el print falla con UnicodeEncodeError y tumba el servidor.
+# Se fuerza UTF-8 aqui por si el .env es de una instalacion anterior.
+if (-not $env:PYTHONIOENCODING) { $env:PYTHONIOENCODING = "utf-8" }
+
 Write-Host ""
 Write-Host "  Iniciando Casa Ketteler..." -ForegroundColor Cyan
 Write-Host ""
