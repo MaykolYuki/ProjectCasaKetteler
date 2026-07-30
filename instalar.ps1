@@ -310,23 +310,49 @@ function Instalar-Python {
         }
     }
 
-    # 3) Ejecutarlo en silencio
+    # 3) Ejecutarlo.
+    #    Se usa /passive y NO /quiet: el instalador de Python muestra su propia
+    #    barra de progreso, sin pedir nada. Con /quiet no se ve absolutamente
+    #    nada y no hay forma de distinguir "trabajando" de "colgado".
     if ($instaladorPy) {
-        Info "Instalando Python (sin ventanas, tarda un par de minutos)..."
+        $registroPy = Join-Path $carpetaLogs "python-instalacion.log"
+        Info "Instalando Python. Aparecera su propia ventana de progreso."
+        Info "Suele tardar 2-5 minutos. No la cierres."
+
         $ejecutar = {
-            $p = Start-Process -FilePath $instaladorPy -Wait -PassThru -ArgumentList @(
-                "/quiet", "InstallAllUsers=1", "PrependPath=1",
-                "Include_launcher=1", "Include_test=0", "SimpleInstall=1"
+            $p = Start-Process -FilePath $instaladorPy -PassThru -ArgumentList @(
+                "/passive", "/log", "`"$registroPy`"",
+                "InstallAllUsers=1", "PrependPath=1",
+                "Include_launcher=1", "InstallLauncherAllUsers=1", "Include_test=0"
             )
+
+            # Espera con senales de vida y un limite: si se cuelga, no deja
+            # el instalador esperando para siempre.
+            $limiteSegundos = 900          # 15 minutos
+            $transcurrido = 0
+            while (-not $p.HasExited -and $transcurrido -lt $limiteSegundos) {
+                Start-Sleep -Seconds 15
+                $transcurrido += 15
+                if ($transcurrido % 60 -eq 0) {
+                    Write-Host ("        ... sigue instalando ({0} min)" -f ($transcurrido / 60)) -ForegroundColor DarkGray
+                }
+            }
+
+            if (-not $p.HasExited) {
+                try { $p.Kill() } catch { }
+                throw "el instalador de Python no termino en 15 minutos; se cancelo"
+            }
             # 0 = instalado, 3010 = instalado pero pide reinicio
             if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
-                throw "el instalador de Python devolvio el codigo $($p.ExitCode)"
+                throw "el instalador de Python devolvio el codigo $($p.ExitCode) (detalle en logs\python-instalacion.log)"
             }
         }
         if (Reintentar -Accion $ejecutar -Descripcion "instalacion de Python" -Intentos 2 -EsperaBase 10) {
             Refrescar-Path
             return $true
         }
+        Aviso "Puedes instalar Python a mano: $instaladorPy"
+        Aviso "Marca 'Add Python to PATH' y luego vuelve a ejecutar este instalador."
     }
 
     # 4) Ultimo recurso: winget
