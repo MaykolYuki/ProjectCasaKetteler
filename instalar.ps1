@@ -67,6 +67,43 @@ $script:Pendientes   = @()
 #  Registro y presentacion
 # ---------------------------------------------------------------------------
 
+# Desactiva el "modo QuickEdit" de la consola de Windows.
+#
+# POR QUE: con QuickEdit activado (viene activado de fabrica), basta con hacer
+# clic dentro de la ventana para que Windows CONGELE el programa hasta que se
+# pulse una tecla. Durante una instalacion larga eso parece que se colgo, y no
+# sirve de nada imprimir mensajes de avance: el bloqueo detiene justamente la
+# escritura en pantalla. Por eso se apaga antes de empezar.
+function Desactivar-PausaPorClic {
+    try {
+        if (-not ("CasaKetteler.Consola" -as [type])) {
+            $firma = @(
+                '[DllImport("kernel32.dll", SetLastError = true)]',
+                'public static extern IntPtr GetStdHandle(int nStdHandle);',
+                '[DllImport("kernel32.dll", SetLastError = true)]',
+                'public static extern bool GetConsoleMode(IntPtr h, out uint m);',
+                '[DllImport("kernel32.dll", SetLastError = true)]',
+                'public static extern bool SetConsoleMode(IntPtr h, uint m);'
+            ) -join "`n"
+            Add-Type -MemberDefinition $firma -Name "Consola" -Namespace "CasaKetteler" -ErrorAction Stop | Out-Null
+        }
+        $api = [CasaKetteler.Consola]
+        $entrada = $api::GetStdHandle(-10)      # STD_INPUT_HANDLE
+        $modo = 0
+        if (-not $api::GetConsoleMode($entrada, [ref]$modo)) { return $false }
+
+        $QUICK_EDIT = 0x0040
+        $EXTENDED   = 0x0080
+        if (-not ($modo -band $QUICK_EDIT)) { return $true }   # ya estaba apagado
+
+        # Al tocar QuickEdit hay que activar EXTENDED_FLAGS o Windows ignora el cambio.
+        $nuevo = ($modo -band (-bnot $QUICK_EDIT)) -bor $EXTENDED
+        return [bool]$api::SetConsoleMode($entrada, $nuevo)
+    } catch {
+        return $false   # sin consola (o sin permiso): no es motivo para detenerse
+    }
+}
+
 function Escribir-Log {
     param([string] $Texto, [string] $Nivel = "INFO")
     $linea = "{0} [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Nivel, $Texto
@@ -378,6 +415,9 @@ function Refrescar-Path {
 if (-not (Test-Path $carpetaLogs)) { New-Item -ItemType Directory -Path $carpetaLogs -Force | Out-Null }
 $script:Estado = Leer-Estado
 
+# Lo PRIMERO de todo: que un clic dentro de la ventana no congele la instalacion.
+$sinPausa = Desactivar-PausaPorClic
+
 Clear-Host
 Write-Host ""
 Write-Host "  ==================================================================" -ForegroundColor Cyan
@@ -395,9 +435,17 @@ if ($script:Estado.Count -gt 0 -and -not $SoloVerificar) {
     Write-Host "     Se encontro una instalacion previa a medias:" -ForegroundColor Yellow
     Write-Host "     se continuara donde quedo (no se repite lo ya hecho)." -ForegroundColor Yellow
 }
+if (-not $sinPausa) {
+    # No se pudo apagar el modo QuickEdit: hay que avisar, porque un clic
+    # dentro de la ventana congelaria la instalacion sin explicacion.
+    Write-Host ""
+    Write-Host "     AVISO: no hagas clic dentro de esta ventana." -ForegroundColor Yellow
+    Write-Host "     Windows pausaria la instalacion. Si pasa, pulsa ENTER." -ForegroundColor Yellow
+}
 Write-Host ""
 
 Escribir-Log "########## Inicio de instalacion en $Carpeta ##########"
+Escribir-Log "Pausa por clic (QuickEdit) desactivada: $sinPausa"
 
 $TOTAL = 9
 

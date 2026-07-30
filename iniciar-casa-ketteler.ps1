@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 #  CASA KETTELER - Inicio del sistema completo
 # ============================================================================
 #  Arranca los DOS servidores que necesita el sistema y muestra su estado:
@@ -16,6 +16,32 @@ $ErrorActionPreference = "Continue"
 function Test-Puerto([int]$puerto) {
     return $null -ne (Get-NetTCPConnection -LocalPort $puerto -State Listen -ErrorAction SilentlyContinue)
 }
+
+# Evita que un clic dentro de esta ventana la congele (modo QuickEdit de Windows).
+# Los servidores seguirian corriendo igual, pero el estado se quedaria detenido y
+# parece que el sistema fallo.
+function Desactivar-PausaPorClic {
+    try {
+        if (-not ("CasaKetteler.Consola" -as [type])) {
+            $firma = @(
+                '[DllImport("kernel32.dll", SetLastError = true)]',
+                'public static extern IntPtr GetStdHandle(int nStdHandle);',
+                '[DllImport("kernel32.dll", SetLastError = true)]',
+                'public static extern bool GetConsoleMode(IntPtr h, out uint m);',
+                '[DllImport("kernel32.dll", SetLastError = true)]',
+                'public static extern bool SetConsoleMode(IntPtr h, uint m);'
+            ) -join "`n"
+            Add-Type -MemberDefinition $firma -Name "Consola" -Namespace "CasaKetteler" -ErrorAction Stop | Out-Null
+        }
+        $api = [CasaKetteler.Consola]
+        $entrada = $api::GetStdHandle(-10)
+        $modo = 0
+        if (-not $api::GetConsoleMode($entrada, [ref]$modo)) { return }
+        [void]$api::SetConsoleMode($entrada, (($modo -band (-bnot 0x0040)) -bor 0x0080))
+    } catch { }
+}
+
+Desactivar-PausaPorClic
 
 # --- 1. Cargar las variables del .env (contraseñas, rutas, JWT, etc.) ---
 $envFile = Join-Path $PSScriptRoot ".env"
