@@ -14,6 +14,12 @@
 #      .\instalar.ps1 -SoloVerificar              # no cambia nada, solo revisa
 #      .\instalar.ps1 -RestaurarRespaldo respaldo.sql
 #
+#  Si una parte quedo mal, se rehace sola sin repetir todo lo demas:
+#      .\instalar.ps1 -Reparar python         # entorno de Python y sus librerias
+#      .\instalar.ps1 -Reparar modelos        # modelos de reconocimiento facial
+#      .\instalar.ps1 -Reparar configuracion  # el archivo .env
+#      .\instalar.ps1 -Reparar todo
+#
 #  SE PUEDE VOLVER A EJECUTAR SIN MIEDO: cada paso comprueba si ya esta hecho y
 #  se salta lo que no hace falta repetir. Si algo falla a mitad (por ejemplo, se
 #  corta la descarga), basta ejecutarlo de nuevo y continua donde quedo.
@@ -31,7 +37,15 @@ param(
     [switch] $SoloVerificar,
 
     # No hace preguntas: usa valores por defecto y omite lo que necesite respuesta.
-    [switch] $Desatendido
+    [switch] $Desatendido,
+
+    # Rehace una parte que quedo mal, sin repetir toda la instalacion:
+    #   python         -> borra y recrea el entorno de Python con sus librerias
+    #   modelos        -> borra y vuelve a preparar los modelos de reconocimiento
+    #   configuracion  -> regenera el .env (guardando copia del anterior)
+    #   todo           -> las tres anteriores
+    [ValidateSet('python', 'modelos', 'configuracion', 'todo')]
+    [string] $Reparar
 )
 
 # "Continue" a proposito: al capturar la salida de programas externos (java,
@@ -470,6 +484,58 @@ Write-Host ""
 Escribir-Log "########## Inicio de instalacion en $Carpeta ##########"
 Escribir-Log "Pausa por clic (QuickEdit) desactivada: $sinPausa"
 
+# ---------------------------------------------------------------------------
+#  Reparacion: se borra lo estropeado y se olvida su avance, para que los pasos
+#  de mas abajo lo rehagan. Todo lo demas se conserva.
+# ---------------------------------------------------------------------------
+if ($Reparar -and -not $SoloVerificar) {
+    Write-Host "  MODO REPARACION: $Reparar" -ForegroundColor Magenta
+    Escribir-Log "Reparacion solicitada: $Reparar"
+
+    $repararPython = $Reparar -in @('python', 'todo')
+    $repararModelos = $Reparar -in @('modelos', 'todo')
+    $repararConfig = $Reparar -in @('configuracion', 'todo')
+
+    if ($repararPython) {
+        $venvRep = Join-Path $Carpeta "python_scripts\venv_perfecto"
+        if (Test-Path $venvRep) {
+            Remove-Item $venvRep -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "     Entorno de Python eliminado; se recreara." -ForegroundColor Gray
+        }
+        foreach ($k in @('pip-herramientas', 'pip-torch', 'pip-tensorflow', 'pip-resto', 'python-verificado')) {
+            $script:Estado.Remove($k)
+        }
+        # La cache de pip NO se borra a proposito: reinstalar sin volver a
+        # descargar los 2 GB es justamente lo que hace util esta opcion.
+        Write-Host "     Se conserva la cache de pip: no habra que descargar de nuevo." -ForegroundColor Gray
+    }
+
+    if ($repararModelos) {
+        $pesosRep = Join-Path $Carpeta "python_scripts\.deepface"
+        if (Test-Path $pesosRep) {
+            Remove-Item $pesosRep -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "     Modelos eliminados; se volveran a preparar." -ForegroundColor Gray
+        }
+        $script:Estado.Remove('modelos')
+    }
+
+    if ($repararConfig) {
+        $envRep = Join-Path $Carpeta ".env"
+        if (Test-Path $envRep) {
+            $copiaRep = Join-Path $carpetaLogs ("env-antes-de-reparar-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".txt")
+            Move-Item $envRep $copiaRep -Force
+            Write-Host "     .env apartado en logs\$(Split-Path $copiaRep -Leaf); se generara uno nuevo." -ForegroundColor Gray
+        }
+        $propsRep = Join-Path $Carpeta "application-prod.properties"
+        if (Test-Path $propsRep) { Remove-Item $propsRep -Force -ErrorAction SilentlyContinue }
+        $script:Estado.Remove('env')
+    }
+
+    # Se guarda el estado ya recortado para que la reanudacion sea coherente.
+    try { $script:Estado | ConvertTo-Json | Set-Content -Path $archivoEstado -Encoding UTF8 } catch { }
+    Write-Host ""
+}
+
 $TOTAL = 9
 
 # ===========================================================================
@@ -511,6 +577,56 @@ if (Hay-Internet) {
 }
 
 Info "Windows: $((Get-CimInstance Win32_OperatingSystem).Caption)"
+
+# --- Software que restaura el equipo al reiniciar ---
+#
+# Habitual en laboratorios y salas de computo: al apagar, el disco vuelve a su
+# estado anterior y la instalacion DESAPARECE. Conviene avisarlo ANTES, porque el
+# entorno de Python solo tarda entre 20 y 40 minutos en instalarse.
+$restauradores = @(
+    @{ Servicio = 'DFServ';          Nombre = 'Deep Freeze' },
+    @{ Servicio = 'DeepFrz';         Nombre = 'Deep Freeze' },
+    @{ Servicio = 'RebootRestoreRx'; Nombre = 'Reboot Restore Rx' },
+    @{ Servicio = 'ShadowDefender';  Nombre = 'Shadow Defender' },
+    @{ Servicio = 'wsdrvnt';         Nombre = 'Shadow Defender' }
+)
+$congelador = $null
+foreach ($r in $restauradores) {
+    if (Get-Service -Name $r.Servicio -ErrorAction SilentlyContinue) { $congelador = $r.Nombre; break }
+}
+if (-not $congelador) {
+    foreach ($p in @('FrzState2k', 'DFServ', 'RestoreRx')) {
+        if (Get-Process -Name $p -ErrorAction SilentlyContinue) { $congelador = $p; break }
+    }
+}
+
+if ($congelador) {
+    Write-Host ""
+    Write-Host "      +--------------------------------------------------------------+" -ForegroundColor Magenta
+    Write-Host "      |  ATENCION: esta computadora se restaura al reiniciar          |" -ForegroundColor Magenta
+    Write-Host "      +--------------------------------------------------------------+" -ForegroundColor Magenta
+    Write-Host "      Se detecto: $congelador" -ForegroundColor Magenta
+    Write-Host ""
+    Write-Host "      Todo lo que se instale ahora DESAPARECERA al apagar el equipo," -ForegroundColor Yellow
+    Write-Host "      incluidas las 2 horas de descargas. Sirve para una demostracion," -ForegroundColor Yellow
+    Write-Host "      no para dejar el sistema operando." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "      Para instalarlo de verdad hay que desactivar esa proteccion antes" -ForegroundColor Yellow
+    Write-Host "      (en Deep Freeze: modo 'Thawed') y volver a ejecutar." -ForegroundColor Yellow
+    Write-Host ""
+    Aviso "Equipo con restauracion automatica ($congelador): la instalacion no sobrevivira al reinicio."
+
+    if (-not $Desatendido -and -not $SoloVerificar) {
+        $seguir = Read-Host "      Escribe SI para continuar de todos modos"
+        if ($seguir -notmatch '^\s*(si|s|yes|y)\s*$') {
+            Write-Host "      Instalacion cancelada." -ForegroundColor Yellow
+            Escribir-Log "Cancelada por el usuario: equipo con $congelador" "ERROR"
+            exit 1
+        }
+    }
+} else {
+    Ok "El equipo no tiene restauracion automatica al reiniciar."
+}
 
 # ===========================================================================
 #  PASO 2 - Programas base
@@ -1388,6 +1504,76 @@ if ($script:Pendientes.Count -gt 0) {
 
 Write-Host ""
 Escribir-Log "########## Fin ($duracion min). Pendientes: $($script:Pendientes.Count). Avisos: $($script:Advertencias.Count) ##########"
+
+# ---------------------------------------------------------------------------
+#  Resumen en archivo: constancia de como quedo el equipo. Sirve para adjuntar
+#  al informe y para que quien de soporte sepa que hay instalado sin tener que
+#  ir mirando carpeta por carpeta.
+# ---------------------------------------------------------------------------
+try {
+    if ($script:Pendientes.Count -gt 0) { $estadoFinal = "INCOMPLETA - quedan $($script:Pendientes.Count) puntos pendientes" }
+    else { $estadoFinal = "COMPLETA" }
+
+    $resumen = @(
+        "CASA KETTELER - Resumen de la instalacion",
+        "=========================================",
+        "",
+        "Fecha        : $(Get-Date -Format 'dd/MM/yyyy HH:mm')",
+        "Equipo       : $env:COMPUTERNAME",
+        "Usuario      : $env:USERNAME",
+        "Carpeta      : $Carpeta",
+        "Duracion     : $duracion minutos",
+        "Estado       : $estadoFinal",
+        ""
+    )
+
+    $resumen += @("PROGRAMAS DETECTADOS", "--------------------")
+    if ($javaOk) { $resumen += "  Java     : version $verJava" } else { $resumen += "  Java     : NO disponible" }
+    if ($pythonOk) { $resumen += "  Python   : $($pythonExe) $($pythonArgs -join ' ')" } else { $resumen += "  Python   : NO disponible" }
+    if ($mysqlOk) { $resumen += "  MySQL    : $mysqlExe" } else { $resumen += "  MySQL    : NO disponible" }
+    $resumen += ""
+
+    $resumen += @("ACCESO AL SISTEMA", "-----------------")
+    $resumen += "  En esta computadora : http://localhost:$PUERTO_BACKEND"
+    if ($ipLocal) { $resumen += "  Desde la red        : http://${ipLocal}:$PUERTO_BACKEND" }
+    $resumen += "  Encender / apagar   : iniciar-casa-ketteler.bat / detener-casa-ketteler.bat"
+    $resumen += ""
+
+    if ($script:Advertencias.Count -gt 0) {
+        $resumen += @("AVISOS", "------")
+        foreach ($a in $script:Advertencias) { $resumen += "  - $a" }
+        $resumen += ""
+    }
+
+    if ($script:Pendientes.Count -gt 0) {
+        $resumen += @("FALTA HACER", "-----------")
+        foreach ($p in $script:Pendientes) { $resumen += "  - $p" }
+        $resumen += ""
+        $resumen += "  Vuelve a ejecutar instalar.bat: continuara donde quedo."
+        $resumen += ""
+    }
+
+    $resumen += @(
+        "ARCHIVOS UTILES",
+        "---------------",
+        "  Registro detallado : logs\instalacion.log",
+        "  Avance guardado    : logs\instalacion-estado.json",
+        "  Registros del sistema: logs\backend.log y logs\reconocimiento.log",
+        "",
+        "Para revisar el estado sin cambiar nada:",
+        "  .\instalar.ps1 -SoloVerificar",
+        "",
+        "Para rehacer una parte que quedo mal, sin repetirlo todo:",
+        "  .\instalar.ps1 -Reparar python|modelos|configuracion|todo"
+    )
+
+    $archivoResumen = Join-Path $carpetaLogs "instalacion-resumen.txt"
+    Set-Content -Path $archivoResumen -Value $resumen -Encoding UTF8
+    Write-Host "     Resumen guardado en logs\instalacion-resumen.txt" -ForegroundColor Gray
+    Write-Host ""
+} catch {
+    Escribir-Log "No se pudo escribir el resumen: $($_.Exception.Message)" "AVISO"
+}
 
 if (-not $Desatendido) {
     Write-Host "     Presiona ENTER para cerrar." -ForegroundColor DarkGray

@@ -64,6 +64,22 @@ Opciones útiles:
 .\instalar.ps1 -RestaurarRespaldo respaldo.sql   # además restaura datos (si la BD está vacía)
 ```
 
+**Si una parte quedó mal**, se rehace sola sin repetir el resto:
+
+```powershell
+.\instalar.ps1 -Reparar python         # entorno de Python y sus librerías
+.\instalar.ps1 -Reparar modelos        # modelos de reconocimiento facial
+.\instalar.ps1 -Reparar configuracion  # el archivo .env (guarda copia del anterior)
+.\instalar.ps1 -Reparar todo
+```
+
+> `-Reparar python` **conserva la caché de pip**: rehace el entorno sin volver a
+> descargar los 2 GB de librerías.
+
+Al terminar, deja un resumen legible en `logs\instalacion-resumen.txt` con lo que se
+detectó, cómo entrar al sistema y qué quedó pendiente. Sirve para adjuntarlo al informe
+o para pasárselo a quien dé soporte.
+
 **El instalador también deja lista la red:** crea la regla del Firewall de Windows para
 el puerto 8001 y comprueba, al final, que el sistema **responde desde la red** y no solo
 desde la propia computadora. Sin esa regla el sistema funcionaría en el servidor pero
