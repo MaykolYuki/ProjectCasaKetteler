@@ -23,7 +23,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $raiz    = $PSScriptRoot
-$version = "1.0"
+$version = "1.1"
 $entrega = Join-Path $raiz "entrega"
 $kit     = Join-Path $entrega "CasaKetteler-$version"
 

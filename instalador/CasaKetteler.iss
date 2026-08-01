@@ -10,7 +10,7 @@
 ; ===========================================================================
 
 #define Nombre        "Casa Ketteler"
-#define Version       "1.0"
+#define Version       "1.1"
 #define Organizacion  "Residencia Universitaria Casa Ketteler"
 #define Lanzador      "iniciar-casa-ketteler.bat"
 
