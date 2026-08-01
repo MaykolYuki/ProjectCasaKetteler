@@ -438,6 +438,90 @@ function Instalar-Python {
     return $false
 }
 
+# Instala Java 21 SIN depender de winget, igual que Python: en equipos
+# administrados winget suele estar restringido y fue justo lo que fallo en la
+# prueba del laboratorio.
+# Orden: 1) el instalador incluido en el paquete  2) descarga de Microsoft
+#        3) winget, como ultimo recurso.
+function Instalar-Java {
+    $carpetaReq = Join-Path $Carpeta "requisitos"
+    $msi = $null
+
+    # 1) ¿Vino incluido?
+    if (Test-Path $carpetaReq) {
+        $msi = Get-ChildItem (Join-Path $carpetaReq "microsoft-jdk-*windows-x64.msi") -ErrorAction SilentlyContinue |
+               Select-Object -First 1 | ForEach-Object { $_.FullName }
+        if ($msi) { Ok "Se usara el instalador de Java incluido en el paquete." }
+    }
+
+    # 2) Descargarlo de Microsoft
+    if (-not $msi) {
+        $descargas = Join-Path $carpetaLogs "descargas"
+        if (-not (Test-Path $descargas)) { New-Item -ItemType Directory -Path $descargas -Force | Out-Null }
+        $destino = Join-Path $descargas "microsoft-jdk-$JAVA_MINIMO-windows-x64.msi"
+        Info "Descargando Java $JAVA_MINIMO de Microsoft (170 MB)..."
+        if (Descargar-Archivo "https://aka.ms/download-jdk/microsoft-jdk-$JAVA_MINIMO-windows-x64.msi" `
+                              $destino "Java $JAVA_MINIMO") {
+            $msi = $destino
+        }
+    }
+
+    # 3) Instalarlo en silencio. INSTALLDIR y ADDLOCAL aseguran que quede en el PATH,
+    #    porque el lanzador invoca "java" a secas.
+    if ($msi) {
+        $registroJava = Join-Path $carpetaLogs "java-instalacion.log"
+        Info "Instalando Java (sin ventanas, tarda un par de minutos)..."
+        $ejecutar = {
+            $p = Start-Process -FilePath "msiexec.exe" -PassThru -ArgumentList @(
+                "/i", "`"$msi`"", "/quiet", "/norestart",
+                "ADDLOCAL=FeatureMain,FeatureEnvironment,FeatureJarFileRunWith,FeatureJavaHome",
+                "/l*v", "`"$registroJava`""
+            )
+            $limite = 900; $transcurrido = 0
+            while (-not $p.HasExited -and $transcurrido -lt $limite) {
+                Start-Sleep -Seconds 15; $transcurrido += 15
+                if ($transcurrido % 60 -eq 0) {
+                    Write-Host ("        ... sigue instalando Java ({0} min)" -f ($transcurrido / 60)) -ForegroundColor DarkGray
+                }
+            }
+            if (-not $p.HasExited) {
+                try { $p.Kill() } catch { }
+                throw "el instalador de Java no termino en 15 minutos; se cancelo"
+            }
+            # 0 = instalado, 3010 = instalado pero pide reinicio
+            if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+                throw "msiexec devolvio el codigo $($p.ExitCode) (detalle en logs\java-instalacion.log)"
+            }
+        }
+        if (Reintentar -Accion $ejecutar -Descripcion "instalacion de Java" -Intentos 2 -EsperaBase 10) {
+            Refrescar-Path
+            return $true
+        }
+        Aviso "Puedes instalar Java a mano: $msi"
+    }
+
+    # 4) Ultimo recurso: winget
+    Aviso "Se intentara con winget como ultimo recurso."
+    if (Instalar-Con-Winget "Microsoft.OpenJDK.$JAVA_MINIMO" "Java (OpenJDK $JAVA_MINIMO)") {
+        Refrescar-Path
+        return $true
+    }
+    return $false
+}
+
+# Lee la version mayor de Java a partir de la salida de "java -version".
+# El formato antiguo (Java 8 y anteriores) es "1.8.0_401": ahi el numero que
+# importa es el segundo, no el primero.
+function Leer-Version-Java {
+    param([string] $Salida)
+    if ($Salida -match '(?:version "|openjdk )(\d+)(?:\.(\d+))?') {
+        $mayor = [int]$Matches[1]
+        if ($mayor -eq 1 -and $Matches[2]) { return [int]$Matches[2] }
+        return $mayor
+    }
+    return 0
+}
+
 function Refrescar-Path {
     # Tras instalar algo, el PATH de esta sesion no lo conoce todavia.
     $maquina = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
@@ -634,29 +718,62 @@ if ($congelador) {
 Mostrar-Paso 2 $TOTAL "Programas base (Java, Python, MySQL)"
 
 # --- Java 21 ---
+#
+# Se mira primero el PATH, que es lo que usa el lanzador ("java -jar"). Si no
+# esta ahi, se buscan las ubicaciones habituales: sirve para distinguir entre
+# "no hay Java" y "hay Java pero el PATH no lo ve", que se arreglan distinto.
+$rutasJava = @(
+    "C:\Program Files\Microsoft\jdk-*\bin\java.exe",
+    "C:\Program Files\Java\jdk-*\bin\java.exe",
+    "C:\Program Files\Eclipse Adoptium\jdk-*\bin\java.exe",
+    "C:\Program Files\Zulu\zulu-*\bin\java.exe",
+    "C:\Program Files\Amazon Corretto\jdk*\bin\java.exe"
+)
+
 $javaOk = $false
-$java = Buscar-Programa "java"
-if ($java) {
-    $salida = (Ejecutar-Nativo "java" @("-version")).Texto
-    if ($salida -match '(?:version "|openjdk )(\d+)') {
-        $verJava = [int]$Matches[1]
-        if ($verJava -ge $JAVA_MINIMO) {
-            Ok "Java $verJava detectado."
-            $javaOk = $true
-        } else {
-            Aviso "Java $verJava es demasiado antiguo (se necesita $JAVA_MINIMO o superior)."
-        }
-    } else {
-        Aviso "Hay un java instalado pero no se pudo leer su version."
-    }
+$verJava = 0
+$javaEnPath = $null -ne (Get-Command "java" -ErrorAction SilentlyContinue)
+$java = Buscar-Programa "java" $rutasJava
+
+# Comprueba el Java disponible y deja en $javaOk / $verJava el resultado.
+function Revisar-Java {
+    $enPath = $null -ne (Get-Command "java" -ErrorAction SilentlyContinue)
+    $ruta = Buscar-Programa "java" $rutasJava
+    if (-not $ruta) { return @{ Ok = $false; Version = 0; EnPath = $false; Ruta = $null } }
+    $v = Leer-Version-Java (Ejecutar-Nativo $ruta @("-version")).Texto
+    return @{ Ok = ($v -ge $JAVA_MINIMO -and $enPath); Version = $v; EnPath = $enPath; Ruta = $ruta }
 }
-if (-not $javaOk -and -not $SoloVerificar) {
-    if (Instalar-Con-Winget "Microsoft.OpenJDK.21" "Java (OpenJDK 21)") {
-        Refrescar-Path
-        if (Buscar-Programa "java") { Ok "Java instalado."; $javaOk = $true }
-    }
+
+$j = Revisar-Java
+
+# Se intenta instalar siempre que no sirva: puede faltar, ser demasiado antiguo
+# o estar fuera del PATH. El instalador de Microsoft resuelve los tres casos.
+if (-not $j.Ok -and -not $SoloVerificar) {
+    if ($j.Version -eq 0)                  { Info "No se encontro Java." }
+    elseif ($j.Version -lt $JAVA_MINIMO)   { Aviso "Java $($j.Version) es demasiado antiguo (se necesita $JAVA_MINIMO o superior)." }
+    elseif (-not $j.EnPath)                { Aviso "Java $($j.Version) esta instalado pero NO en el PATH: $($j.Ruta)" }
+
+    if (Instalar-Java) { $j = Revisar-Java }   # se revisa de nuevo la VERSION, no solo que exista
 }
-if (-not $javaOk) { Pendiente "Instalar JDK 21 (https://learn.microsoft.com/java/openjdk/download)" }
+
+$javaOk = $j.Ok
+$verJava = $j.Version
+
+if ($javaOk) {
+    Ok "Java $verJava detectado."
+    if ($verJava -gt $JAVA_MINIMO) {
+        Info "El sistema se compilo para Java $JAVA_MINIMO; con $verJava funciona igual."
+    }
+} elseif ($verJava -ge $JAVA_MINIMO -and -not $j.EnPath) {
+    # Existe y la version sirve, pero el lanzador invoca "java" a secas y no lo
+    # encontraria: el sistema no arrancaria.
+    Write-Host "              El sistema no arrancaria: el lanzador invoca 'java' a secas." -ForegroundColor Yellow
+    Pendiente "Anadir al PATH la carpeta: $(Split-Path $j.Ruta)"
+} elseif ($verJava -gt 0 -and $verJava -lt $JAVA_MINIMO) {
+    Pendiente "Actualizar a JDK $JAVA_MINIMO o superior; el instalado es Java $verJava (https://learn.microsoft.com/java/openjdk/download)"
+} else {
+    Pendiente "Instalar JDK $JAVA_MINIMO (https://learn.microsoft.com/java/openjdk/download)"
+}
 
 # --- Python 3.10 a 3.12 ---
 # En una PC puede haber VARIAS versiones de Python a la vez, y el 'python' del

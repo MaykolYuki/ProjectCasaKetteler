@@ -28,6 +28,10 @@ param(
     # falta instalarlo a mano si no lo tiene).
     [switch] $SinPython,
 
+    # Incluye tambien el instalador de Java (170 MB). Solo hace falta si la PC de
+    # destino no tiene Java y su red no permite descargarlo.
+    [switch] $ConJava,
+
     # Compila el backend antes de empaquetar.
     [switch] $Compilar
 )
@@ -171,6 +175,28 @@ if (-not $SinPython) {
     }
     Copy-Item $archivoPy $carpetaReq -Force
     Ok ("Instalador de Python {0} incluido ({1:N0} MB)." -f $versionPy, ((Get-Item $archivoPy).Length / 1MB))
+}
+
+# --- Instalador de Java (opcional) ---
+if ($ConJava) {
+    $carpetaReq = Join-Path $carga "requisitos"
+    if (-not (Test-Path $carpetaReq)) { New-Item -ItemType Directory -Path $carpetaReq -Force | Out-Null }
+    $cacheJava = Join-Path $raiz "instalador\cache"
+    if (-not (Test-Path $cacheJava)) { New-Item -ItemType Directory -Path $cacheJava -Force | Out-Null }
+    $archivoJava = Join-Path $cacheJava "microsoft-jdk-21-windows-x64.msi"
+
+    if (-not (Test-Path $archivoJava)) {
+        Nota "Descargando el instalador de Java 21 (170 MB)..."
+        try {
+            Invoke-WebRequest -Uri "https://aka.ms/download-jdk/microsoft-jdk-21-windows-x64.msi" `
+                              -OutFile "$archivoJava.part" -UseBasicParsing -TimeoutSec 600 -ErrorAction Stop
+            Move-Item "$archivoJava.part" $archivoJava -Force
+        } catch {
+            Morir "No se pudo descargar el instalador de Java." "Comprueba la conexion, o construye sin -ConJava."
+        }
+    }
+    Copy-Item $archivoJava $carpetaReq -Force
+    Ok ("Instalador de Java 21 incluido ({0:N0} MB)." -f ((Get-Item $archivoJava).Length / 1MB))
 }
 
 # --- Modelos de reconocimiento (opcional) ---

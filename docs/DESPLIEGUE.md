@@ -14,8 +14,13 @@ Cómo instalar el sistema en la PC que quedará operando en la residencia.
 ```powershell
 .\construir-instalador.ps1                  # ~73 MB
 .\construir-instalador.ps1 -ConModelos      # ~330 MB, evita bajar los modelos allá
+.\construir-instalador.ps1 -ConJava         # +170 MB, si allá no hay Java ni buena red
 .\construir-instalador.ps1 -SinInternet     # ~2.5 GB, instala sin red en destino
 ```
+
+> El instalador ya sabe instalar **Java y Python** por su cuenta, descargándolos de sus
+> sitios oficiales. Las opciones anteriores solo hacen falta si la red de destino es
+> lenta o está filtrada.
 
 Queda en `instalador\salida\CasaKetteler-Instalador-1.0.exe`. **Ese único archivo es
 todo lo que llevas** — dentro van el backend, la interfaz web, los scripts de
