@@ -839,6 +839,31 @@ $mysqlOk = $false
 if ($mysqlExe) {
     Ok "MySQL detectado en $mysqlExe"
     $mysqlOk = $true
+
+    # Que el programa este instalado no significa que el servidor este en marcha.
+    # Importa comprobarlo AQUI y no mas adelante: el paso 4 verifica la contraseña
+    # contra el servidor, y si estuviera apagado diria que la contraseña es
+    # incorrecta cuando el problema es otro.
+    $servicioMysql = Get-Service -Name "MySQL*" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $servicioMysql) {
+        Aviso "No se encontro el servicio de MySQL; puede estar instalado de otra forma."
+    } elseif ($servicioMysql.Status -eq 'Running') {
+        Ok "El servidor MySQL esta en marcha ($($servicioMysql.Name))."
+    } elseif ($SoloVerificar) {
+        Pendiente "El servicio $($servicioMysql.Name) esta DETENIDO: el sistema no podria guardar nada."
+    } else {
+        Info "El servicio $($servicioMysql.Name) esta detenido; se va a iniciar..."
+        $arrancar = {
+            Start-Service -Name $servicioMysql.Name -ErrorAction Stop
+            $servicioMysql.WaitForStatus('Running', (New-TimeSpan -Seconds 45))
+        }
+        if (Reintentar -Accion $arrancar -Descripcion "arranque de MySQL" -Intentos 2 -EsperaBase 5) {
+            Ok "Servidor MySQL iniciado."
+        } else {
+            Pendiente "Arrancar el servicio $($servicioMysql.Name) de MySQL (services.msc)."
+            $mysqlOk = $false
+        }
+    }
 } else {
     Pendiente "Instalar MySQL Server 8 y anotar la contraseña de root (https://dev.mysql.com/downloads/installer/)"
     Aviso "MySQL se instala a mano porque su asistente pide definir la contraseña de root."
@@ -961,28 +986,66 @@ function Poner-Clave {
 }
 
 if (-not $SoloVerificar) {
-    # Contraseña de MySQL: se pide y se comprueba de verdad contra el servidor.
+    # --- Contraseña de MySQL ---
+    #
+    # Toda contraseña se comprueba contra el servidor, INCLUIDA la que ya venia en
+    # el .env. Antes se daba por buena sin probarla, asi que una contraseña
+    # caducada (o de otra instalacion) pasaba de largo y el fallo aparecia mas
+    # tarde, al crear la base de datos, con un mensaje que no explicaba nada.
     $passMysql = $null
-    if ($claves.Contains("DB_PASSWORD") -and $claves["DB_PASSWORD"] -and $claves["DB_PASSWORD"] -ne "root") {
-        $passMysql = $claves["DB_PASSWORD"]
-        Saltado "Contraseña de MySQL tomada del .env existente."
-    } elseif ($Desatendido) {
-        Aviso "Modo desatendido: no se puede pedir la contraseña de MySQL."
-    } else {
-        for ($i = 1; $i -le 3; $i++) {
-            Write-Host ""
-            Write-Host "      Escribe la contraseña de 'root' de MySQL de esta PC:" -ForegroundColor White
-            $segura = Read-Host "      Contraseña" -AsSecureString
-            $passMysql = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-                          [Runtime.InteropServices.Marshal]::SecureStringToBSTR($segura))
-            $prueba = Ejecutar-Nativo $mysqlExe @("-uroot", "-p$passMysql", "-e", "SELECT 1;")
-            if ($prueba.Codigo -eq 0) { Ok "Contraseña verificada contra MySQL."; break }
-            Write-Host "      Esa contraseña no funciona." -ForegroundColor Red
-            if ($i -eq 3) { Aviso "No se verifico la contraseña de MySQL; revisa el .env luego."; }
+    $passValida = $false
+
+    # 1) La guardada en el .env, si la hay.
+    if ($claves.Contains("DB_PASSWORD") -and $claves["DB_PASSWORD"]) {
+        $candidata = $claves["DB_PASSWORD"]
+        if ($mysqlOk) {
+            $prueba = Ejecutar-Nativo $mysqlExe @("-uroot", "-p$candidata", "-e", "SELECT 1;")
+            if ($prueba.Codigo -eq 0) {
+                $passMysql = $candidata; $passValida = $true
+                Ok "La contraseña de MySQL del .env funciona."
+            } else {
+                Aviso "La contraseña de MySQL guardada en el .env YA NO FUNCIONA."
+            }
+        } else {
+            # Sin servidor no se puede comprobar: se conserva y se avisa, en vez de
+            # dar por hecho que esta mal.
+            $passMysql = $candidata
+            Aviso "No se pudo comprobar la contraseña del .env: MySQL no responde."
         }
     }
 
-    if ($passMysql) { Poner-Clave "DB_PASSWORD" $passMysql -NoMostrar }
+    # 2) Si no sirve, se pide.
+    if (-not $passValida -and $mysqlOk) {
+        if ($Desatendido) {
+            Aviso "Modo desatendido: no se puede pedir la contraseña de MySQL."
+        } else {
+            for ($i = 1; $i -le 3; $i++) {
+                Write-Host ""
+                Write-Host "      Escribe la contraseña de 'root' de MySQL de esta PC:" -ForegroundColor White
+                $segura = Read-Host "      Contraseña" -AsSecureString
+                $intento = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+                              [Runtime.InteropServices.Marshal]::SecureStringToBSTR($segura))
+                $prueba = Ejecutar-Nativo $mysqlExe @("-uroot", "-p$intento", "-e", "SELECT 1;")
+                if ($prueba.Codigo -eq 0) {
+                    $passMysql = $intento; $passValida = $true
+                    Ok "Contraseña verificada contra MySQL."
+                    break
+                }
+                Write-Host "      Esa contraseña no funciona. Te quedan $(3 - $i) intentos." -ForegroundColor Red
+            }
+            if (-not $passValida) {
+                Pendiente "La contraseña de 'root' de MySQL no se pudo verificar: la base de datos no funcionara."
+            }
+        }
+    }
+
+    # Se asigna directamente y no con Poner-Clave: esa funcion respeta el valor
+    # que ya hubiera en el .env, y aqui hace falta justo lo contrario, sustituir
+    # la contraseña vieja por la que se acaba de verificar.
+    if ($passMysql) {
+        $claves["DB_PASSWORD"] = $passMysql
+        if ($passValida) { Ok "DB_PASSWORD actualizado con la contraseña verificada." }
+    }
 
     Poner-Clave "SPRING_PROFILES_ACTIVE" "prod"
     Poner-Clave "DB_HOST"     "localhost"
@@ -1066,7 +1129,25 @@ if (-not $SoloVerificar) {
         Ok "application-prod.properties escrito (permite crear el esquema)."
     }
 } else {
-    if (Test-Path $archivoEnv) { Ok ".env presente." } else { Pendiente "Falta el archivo .env" }
+    if (Test-Path $archivoEnv) {
+        Ok ".env presente."
+
+        # Comprobar la contraseña aqui es lo mas util del modo revision: es la
+        # causa habitual de que el sistema arranque pero no guarde nada.
+        if ($mysqlOk -and $claves.Contains("DB_PASSWORD") -and $claves["DB_PASSWORD"]) {
+            $p = Ejecutar-Nativo $mysqlExe @("-uroot", "-p$($claves['DB_PASSWORD'])", "-e", "SELECT 1;")
+            if ($p.Codigo -eq 0) { Ok "La contraseña de MySQL del .env funciona." }
+            else { Pendiente "La contraseña de MySQL del .env ya no funciona: el sistema no podra guardar datos." }
+        }
+
+        foreach ($obligatoria in @("DB_URL", "JWT_SECRET", "APP_STORAGE_PATH")) {
+            if (-not $claves.Contains($obligatoria) -or -not $claves[$obligatoria]) {
+                Pendiente "Falta $obligatoria en el .env (ejecuta el instalador para completarlo)."
+            }
+        }
+    } else {
+        Pendiente "Falta el archivo .env"
+    }
 }
 
 # --- Ruta de mysqldump en application.properties (respaldos) ---
