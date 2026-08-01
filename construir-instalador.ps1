@@ -124,7 +124,8 @@ $scripts = @(
     "iniciar-casa-ketteler.bat", "iniciar-casa-ketteler.ps1",
     "detener-casa-ketteler.bat", "detener-casa-ketteler.ps1",
     "actualizar-frontend.ps1", "ejecutar-backend.ps1",
-    "instalar.bat", "instalar.ps1"
+    "instalar.bat", "instalar.ps1",
+    "actualizar-sistema.bat", "actualizar-sistema.ps1"
 )
 foreach ($s in $scripts) {
     $ruta = Join-Path $raiz $s

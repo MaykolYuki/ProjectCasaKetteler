@@ -358,21 +358,46 @@ lo abren. **No hace falta el modo desarrollador.**
 
 ## Actualizar una instalación existente
 
-```powershell
-# 1. Apagar (como administrador si arranca automático)
-.\detener-casa-ketteler.bat
+Lleva la versión nueva en una USB, con esta estructura:
 
-# 2. Reemplazar lo que cambió
-#    - JAR nuevo      -> si cambió el backend
-#    - carpeta frontend -> si cambió la interfaz
-
-# 3. Encender
-.\iniciar-casa-ketteler.bat
+```
+version-nueva\
+├── target\proyecto.jar      ← si cambió el backend
+└── frontend\                ← si cambió la interfaz
 ```
 
-**La interfaz web se puede actualizar sola**, sin tocar el JAR: basta reemplazar el
-contenido de `frontend\`.
+Y en la computadora de la residencia:
 
-Si cambió la app móvil, hay que repartir el APK nuevo a los residentes.
+```
+arrastra la carpeta sobre  actualizar-sistema.bat
+```
+
+O desde PowerShell como administrador:
+
+```powershell
+.\actualizar-sistema.ps1 -Desde "D:\version-nueva"
+.\actualizar-sistema.ps1 -Desde "D:\version-nueva" -Solo frontend
+.\actualizar-sistema.ps1 -Deshacer      # vuelve a la versión anterior
+```
+
+**Qué hace por ti:**
+
+| | |
+|---|---|
+| **Guarda la versión actual** | En `backups\version-<fecha>\` (conserva las 3 últimas) |
+| **Respalda la base de datos** | Antes de tocar el backend, por si la versión nueva cambia las tablas |
+| **Detecta si no hay cambios** | Compara el JAR por contenido; si es idéntico, no para el sistema |
+| **Comprueba que arrancó** | No se fía: espera al puerto y consulta el estado de salud |
+| **Deshace solo si falla** | Restaura la versión anterior y la vuelve a arrancar |
+
+> **La interfaz web se actualiza sin parar nada**: se lee en cada petición. Solo el
+> cambio de backend obliga a reiniciar.
+
+> ⚠️ **La base de datos nunca se restaura automáticamente.** Al deshacer se vuelven
+> atrás los archivos, no los datos: restaurar el `.sql` borraría lo que los residentes
+> hubieran registrado desde la actualización. Esa decisión es de una persona.
+
+Si cambió la app móvil, hay que repartir el APK nuevo a los residentes: eso no lo cubre
+este script.
 
 > 💡 Antes de actualizar, pulsa **"Respaldar ahora"** en el panel del administrador.
