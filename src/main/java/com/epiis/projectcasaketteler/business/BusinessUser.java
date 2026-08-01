@@ -251,14 +251,27 @@ public class BusinessUser {
 			repositoryUser.save(entityUser);
 			response.setTemporalPassword(temporalPassword);
 
+			// El correo puede fallar (sin conexion, o sin credenciales configuradas
+			// en una instalacion nueva) y eso NO debe impedir crear al residente:
+			// la contraseña temporal se muestra en pantalla igualmente.
+			boolean correoEnviado = false;
 			try {
 				emailHelper.sendTemporaryCredentials(request.getEmail(), request.getEmail(), temporalPassword);
+				correoEnviado = true;
 			} catch (Exception e) {
 				System.err.println("Error al enviar email: " + e.getMessage());
 			}
 
 			response.setType("success");
-			response.getListMessage().add("Usuario registrado exitosamente. Se enviaron las credenciales a su email.");
+			// El mensaje dice lo que realmente paso. Antes afirmaba siempre que se
+			// habia enviado el correo, asi que quien daba de alta al residente creia
+			// que le habian llegado las credenciales cuando no era cierto.
+			if (correoEnviado) {
+				response.getListMessage().add("Usuario registrado exitosamente. Se enviaron las credenciales a su email.");
+			} else {
+				response.getListMessage().add(
+						"Usuario registrado exitosamente. NO se pudo enviar el correo: entrega estas credenciales al residente.");
+			}
 
 			return response;
 

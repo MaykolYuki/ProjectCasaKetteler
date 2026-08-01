@@ -96,6 +96,24 @@ programada y no hay nadie que responda el aviso.
 > bloqueando aunque exista la regla. El instalador lo detecta y avisa. Se corrige en
 > *Configuración → Red e Internet*, cambiando esa red a **privada**.
 
+**La primera cuenta se crea sola.** Una instalación nueva arranca con la base de datos
+vacía: sin esto habría tablas pero **nadie con quien entrar**, y como los residentes
+solo puede darlos de alta un administrador, el sistema quedaría inservible.
+
+En el primer arranque el sistema crea:
+
+| | |
+|---|---|
+| **Residencia** | «Casa Ketteler» (o la que ya exista en la base de datos) |
+| **Cuenta** | `admin@casaketteler.local`, con rol de administración total |
+| **Contraseña** | **Distinta en cada instalación**, generada por el instalador |
+
+La contraseña aparece al final de la instalación y queda en
+`logs\instalacion-resumen.txt`. **Debe cambiarse al entrar por primera vez.**
+
+> Solo ocurre si la base de datos **no tiene ningún administrador**. En una instalación
+> en marcha no se toca nada, ni se recrean cuentas que se hayan borrado a propósito.
+
 **Qué sigue necesitando mano humana:**
 
 - Instalar **MySQL Server 8** *antes*, y tener a mano la contraseña de `root` (su

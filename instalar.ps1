@@ -70,6 +70,7 @@ $VERSION_PYTHON   = "3.12.10"   # la que se instala si falta (descarga de python
 $PUERTO_BACKEND   = 8001
 $PUERTO_PYTHON    = 5000
 $NOMBRE_BD        = "casaKetteler"
+$ADMIN_EMAIL_POR_DEFECTO = "admin@casaketteler.local"
 $TAREA_PROGRAMADA = "Casa Ketteler"
 $ESPACIO_MINIMO_GB = 6
 $INDICE_TORCH     = "https://download.pytorch.org/whl/cpu"
@@ -1077,6 +1078,22 @@ if (-not $SoloVerificar) {
     # DeepFace usa emojis en los mensajes y la salida redirigida va en cp1252.
     Poner-Clave "PYTHONIOENCODING" "utf-8"
 
+    # Cuenta de administracion del primer arranque. Sin ella la instalacion queda
+    # inservible: hay tablas pero nadie con quien entrar, y los residentes solo
+    # los puede dar de alta un administrador.
+    # La contraseña se genera distinta en cada instalacion: una fija y conocida
+    # en el codigo seria la misma en todas las residencias.
+    Poner-Clave "ADMIN_INICIAL_EMAIL" $ADMIN_EMAIL_POR_DEFECTO
+    $letras = "ABCDEFGHJKLMNPQRSTUVWXYZ"      # sin I ni O, para no confundir al teclearla
+    $minus  = "abcdefghijkmnpqrstuvwxyz"      # sin l ni o
+    $nums   = "23456789"                      # sin 0 ni 1
+    $clave = -join (
+        (1..4 | ForEach-Object { $letras[(Get-Random -Maximum $letras.Length)] }) +
+        (1..4 | ForEach-Object { $minus[(Get-Random -Maximum $minus.Length)] }) +
+        (1..4 | ForEach-Object { $nums[(Get-Random -Maximum $nums.Length)] })
+    )
+    Poner-Clave "ADMIN_INICIAL_PASSWORD" $clave -NoMostrar
+
     $origenes = @("http://localhost:$PUERTO_BACKEND", "capacitor://localhost", "http://localhost")
     if ($ipLocal) { $origenes += "http://${ipLocal}:$PUERTO_BACKEND" }
     Poner-Clave "CORS_ALLOWED_ORIGINS" ($origenes -join ",")
@@ -1499,11 +1516,14 @@ if ($ssid -or $bssid) {
             if ($r.Codigo -eq 0) { Ok "Red guardada en la base de datos." }
             else { Pendiente "Guardar el SSID/BSSID a mano (DESPLIEGUE.md paso 5.1)." }
         } else {
-            Info "Todavia no hay ninguna residencia registrada en la base de datos."
-            Pendiente "Tras registrar la residencia en el sistema, guardar SSID='$ssid' y BSSID='$bssid' (DESPLIEGUE.md paso 5.1)"
+            # La residencia la crea el sistema en su primer arranque. Si aun no
+            # ha arrancado, no existe todavia: se guardan los datos para aplicarlos
+            # despues, en la siguiente pasada del instalador.
+            Info "La residencia aun no existe: se crea en el primer arranque del sistema."
             $datos = "SSID=$ssid`r`nBSSID=$bssid`r`n"
             Set-Content -Path (Join-Path $carpetaLogs "red-wifi-detectada.txt") -Value $datos -Encoding UTF8
-            Info "Datos guardados en logs\red-wifi-detectada.txt para usarlos luego."
+            Pendiente "Vuelve a ejecutar el instalador cuando el sistema haya arrancado, y guardara la red (SSID='$ssid')"
+            Info "Datos guardados en logs\red-wifi-detectada.txt"
         }
     }
 } else {
@@ -1696,6 +1716,18 @@ if ($script:Pendientes.Count -gt 0) {
         Write-Host "     Desde otra PC:      http://${ipLocal}:$PUERTO_BACKEND" -ForegroundColor White
     }
     Write-Host "     Encender / apagar:  iniciar-casa-ketteler.bat / detener-casa-ketteler.bat" -ForegroundColor White
+
+    # Las credenciales, bien visibles: sin ellas no se puede hacer nada.
+    if ($claves -and $claves["ADMIN_INICIAL_EMAIL"]) {
+        Write-Host ""
+        Write-Host "     +------------------------------------------------------------+" -ForegroundColor Cyan
+        Write-Host "     |  ENTRA POR PRIMERA VEZ CON ESTOS DATOS                     |" -ForegroundColor Cyan
+        Write-Host "     +------------------------------------------------------------+" -ForegroundColor Cyan
+        Write-Host "        Usuario    : $($claves['ADMIN_INICIAL_EMAIL'])" -ForegroundColor White
+        Write-Host "        Contrasena : $($claves['ADMIN_INICIAL_PASSWORD'])" -ForegroundColor White
+        Write-Host ""
+        Write-Host "        CAMBIALA al entrar. Tambien quedan en logs\instalacion-resumen.txt" -ForegroundColor Yellow
+    }
     Write-Host ""
     Write-Host "     Reinicia la PC para comprobar que el sistema vuelve solo." -ForegroundColor Yellow
 }
@@ -1736,6 +1768,20 @@ try {
     if ($ipLocal) { $resumen += "  Desde la red        : http://${ipLocal}:$PUERTO_BACKEND" }
     $resumen += "  Encender / apagar   : iniciar-casa-ketteler.bat / detener-casa-ketteler.bat"
     $resumen += ""
+
+    if ($claves -and $claves["ADMIN_INICIAL_EMAIL"]) {
+        $resumen += @(
+            "CUENTA DE ADMINISTRACION (primer ingreso)",
+            "-----------------------------------------",
+            "  Usuario    : $($claves['ADMIN_INICIAL_EMAIL'])",
+            "  Contrasena : $($claves['ADMIN_INICIAL_PASSWORD'])",
+            "",
+            "  CAMBIA ESTA CONTRASENA al entrar por primera vez.",
+            "  Esta cuenta se crea sola en el primer arranque, solo si la base de",
+            "  datos aun no tenia ningun administrador.",
+            ""
+        )
+    }
 
     if ($script:Advertencias.Count -gt 0) {
         $resumen += @("AVISOS", "------")
