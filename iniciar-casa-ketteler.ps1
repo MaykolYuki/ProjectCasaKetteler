@@ -107,7 +107,15 @@ if (Test-Puerto 8001) {
         Read-Host "Presiona ENTER para cerrar"
         exit 1
     }
-    Start-Process -FilePath "java" -ArgumentList "-jar", "`"$jar`"" -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs "backend.log") -RedirectStandardError (Join-Path $logs "backend.error.log")
+    # Se limita la memoria del backend a proposito.
+    #
+    # Sin -Xmx, Java se reserva hasta la CUARTA PARTE de la RAM del equipo: en una
+    # computadora de 8 GB serian 2 GB solo para el backend, compitiendo con el
+    # reconocimiento facial, que necesita cerca de 1 GB con los modelos cargados.
+    # Con 768 MB va sobrado para una residencia (en reposo usa unos 330 MB) y deja
+    # sitio al resto.
+    $memoriaBackend = "-Xmx768m"
+    Start-Process -FilePath "java" -ArgumentList $memoriaBackend, "-jar", "`"$jar`"" -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs "backend.log") -RedirectStandardError (Join-Path $logs "backend.error.log")
     Write-Host "  - Backend: iniciando."
 }
 
