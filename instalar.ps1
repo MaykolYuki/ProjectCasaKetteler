@@ -1,0 +1,1828 @@
+﻿# ============================================================================
+#  CASA KETTELER - Instalador del sistema
+# ============================================================================
+#  Deja la computadora de la residencia lista para operar: comprueba los
+#  programas base, crea las carpetas, configura el .env, prepara la base de
+#  datos, instala el entorno de Python, descarga los modelos de reconocimiento
+#  y registra el arranque automatico.
+#
+#  USO (clic derecho -> Ejecutar como administrador):
+#      .\instalar.bat
+#
+#  O desde PowerShell como administrador:
+#      .\instalar.ps1
+#      .\instalar.ps1 -SoloVerificar              # no cambia nada, solo revisa
+#      .\instalar.ps1 -RestaurarRespaldo respaldo.sql
+#
+#  Si una parte quedo mal, se rehace sola sin repetir todo lo demas:
+#      .\instalar.ps1 -Reparar python         # entorno de Python y sus librerias
+#      .\instalar.ps1 -Reparar modelos        # modelos de reconocimiento facial
+#      .\instalar.ps1 -Reparar configuracion  # el archivo .env
+#      .\instalar.ps1 -Reparar todo
+#
+#  SE PUEDE VOLVER A EJECUTAR SIN MIEDO: cada paso comprueba si ya esta hecho y
+#  se salta lo que no hace falta repetir. Si algo falla a mitad (por ejemplo, se
+#  corta la descarga), basta ejecutarlo de nuevo y continua donde quedo.
+# ============================================================================
+
+[CmdletBinding()]
+param(
+    # Carpeta donde queda instalado el sistema (por defecto, la de este script).
+    [string] $Carpeta = $PSScriptRoot,
+
+    # Respaldo .sql a restaurar (solo si la base de datos esta vacia).
+    [string] $RestaurarRespaldo,
+
+    # Revisa el estado sin modificar nada.
+    [switch] $SoloVerificar,
+
+    # No hace preguntas: usa valores por defecto y omite lo que necesite respuesta.
+    [switch] $Desatendido,
+
+    # Rehace una parte que quedo mal, sin repetir toda la instalacion:
+    #   python         -> borra y recrea el entorno de Python con sus librerias
+    #   modelos        -> borra y vuelve a preparar los modelos de reconocimiento
+    #   configuracion  -> regenera el .env (guardando copia del anterior)
+    #   todo           -> las tres anteriores
+    [ValidateSet('python', 'modelos', 'configuracion', 'todo')]
+    [string] $Reparar
+)
+
+# "Continue" a proposito: al capturar la salida de programas externos (java,
+# python, mysql, pip) con 2>&1, PowerShell 5.1 envuelve cada linea de error en un
+# ErrorRecord. Con "Stop" eso aborta el script aunque el programa haya funcionado
+# bien. Los fallos de verdad se detectan por el codigo de salida y se lanzan a
+# mano con "throw" dentro de cada paso.
+$ErrorActionPreference = "Continue"
+
+# Al capturar la salida de Python, Windows usa cp1252 en vez de UTF-8. Varias
+# librerias (DeepFace, por ejemplo) escriben emojis en sus mensajes, y al no
+# poder representarlos en cp1252 el print revienta con UnicodeEncodeError y
+# tumba la operacion entera (incluida la descarga de los modelos). Esto lo evita.
+$env:PYTHONIOENCODING = "utf-8"
+
+# ---------------------------------------------------------------------------
+#  Constantes
+# ---------------------------------------------------------------------------
+$JAVA_MINIMO      = 21
+$PYTHON_SOPORTADO = @("3.10", "3.11", "3.12")
+$VERSION_PYTHON   = "3.12.10"   # la que se instala si falta (descarga de python.org)
+$PUERTO_BACKEND   = 8001
+$PUERTO_PYTHON    = 5000
+$NOMBRE_BD        = "casaKetteler"
+$ADMIN_EMAIL_POR_DEFECTO = "admin@casaketteler.local"
+$TAREA_PROGRAMADA = "Casa Ketteler"
+$ESPACIO_MINIMO_GB = 6
+$INDICE_TORCH     = "https://download.pytorch.org/whl/cpu"
+
+$carpetaLogs   = Join-Path $Carpeta "logs"
+$archivoLog    = Join-Path $carpetaLogs "instalacion.log"
+$archivoEstado = Join-Path $carpetaLogs "instalacion-estado.json"
+$cachePip      = Join-Path $carpetaLogs "pip-cache"
+
+$inicio = Get-Date
+$script:Advertencias = @()
+$script:Pendientes   = @()
+
+# ---------------------------------------------------------------------------
+#  Registro y presentacion
+# ---------------------------------------------------------------------------
+
+# Desactiva el "modo QuickEdit" de la consola de Windows.
+#
+# POR QUE: con QuickEdit activado (viene activado de fabrica), basta con hacer
+# clic dentro de la ventana para que Windows CONGELE el programa hasta que se
+# pulse una tecla. Durante una instalacion larga eso parece que se colgo, y no
+# sirve de nada imprimir mensajes de avance: el bloqueo detiene justamente la
+# escritura en pantalla. Por eso se apaga antes de empezar.
+function Desactivar-PausaPorClic {
+    try {
+        if (-not ("CasaKetteler.Consola" -as [type])) {
+            $firma = @(
+                '[DllImport("kernel32.dll", SetLastError = true)]',
+                'public static extern IntPtr GetStdHandle(int nStdHandle);',
+                '[DllImport("kernel32.dll", SetLastError = true)]',
+                'public static extern bool GetConsoleMode(IntPtr h, out uint m);',
+                '[DllImport("kernel32.dll", SetLastError = true)]',
+                'public static extern bool SetConsoleMode(IntPtr h, uint m);'
+            ) -join "`n"
+            Add-Type -MemberDefinition $firma -Name "Consola" -Namespace "CasaKetteler" -ErrorAction Stop | Out-Null
+        }
+        $api = [CasaKetteler.Consola]
+        $entrada = $api::GetStdHandle(-10)      # STD_INPUT_HANDLE
+        $modo = 0
+        if (-not $api::GetConsoleMode($entrada, [ref]$modo)) { return $false }
+
+        $QUICK_EDIT = 0x0040
+        $EXTENDED   = 0x0080
+        if (-not ($modo -band $QUICK_EDIT)) { return $true }   # ya estaba apagado
+
+        # Al tocar QuickEdit hay que activar EXTENDED_FLAGS o Windows ignora el cambio.
+        $nuevo = ($modo -band (-bnot $QUICK_EDIT)) -bor $EXTENDED
+        return [bool]$api::SetConsoleMode($entrada, $nuevo)
+    } catch {
+        return $false   # sin consola (o sin permiso): no es motivo para detenerse
+    }
+}
+
+function Escribir-Log {
+    param([string] $Texto, [string] $Nivel = "INFO")
+    $linea = "{0} [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Nivel, $Texto
+    try { Add-Content -Path $archivoLog -Value $linea -Encoding UTF8 -ErrorAction SilentlyContinue } catch { }
+}
+
+function Mostrar-Paso {
+    param([int] $Numero, [int] $Total, [string] $Titulo)
+    Write-Host ""
+    Write-Host ("  [{0}/{1}] {2}" -f $Numero, $Total, $Titulo) -ForegroundColor Cyan
+    Write-Host ("  " + ("-" * 66)) -ForegroundColor DarkGray
+    Escribir-Log "===== PASO $Numero/$Total : $Titulo ====="
+}
+
+function Ok       { param([string] $T) Write-Host "      [OK]    $T" -ForegroundColor Green;  Escribir-Log $T "OK" }
+function Info     { param([string] $T) Write-Host "      ->      $T" -ForegroundColor Gray;   Escribir-Log $T }
+function Saltado  { param([string] $T) Write-Host "      [YA]    $T" -ForegroundColor DarkGray; Escribir-Log "$T (ya estaba hecho)" }
+function Aviso    {
+    param([string] $T)
+    Write-Host "      [AVISO] $T" -ForegroundColor Yellow
+    Escribir-Log $T "AVISO"
+    $script:Advertencias += $T
+}
+function Pendiente {
+    param([string] $T)
+    Write-Host "      [FALTA] $T" -ForegroundColor Magenta
+    Escribir-Log $T "PENDIENTE"
+    $script:Pendientes += $T
+}
+function Fallo {
+    param([string] $T, [string] $Sugerencia)
+    Write-Host ""
+    Write-Host "      [ERROR] $T" -ForegroundColor Red
+    if ($Sugerencia) { Write-Host "              $Sugerencia" -ForegroundColor Yellow }
+    Escribir-Log "$T | $Sugerencia" "ERROR"
+}
+
+# ---------------------------------------------------------------------------
+#  Estado: permite reanudar sin repetir trabajo
+# ---------------------------------------------------------------------------
+
+function Leer-Estado {
+    if (-not (Test-Path $archivoEstado)) { return @{} }
+    try {
+        $tabla = @{}
+        $json = Get-Content $archivoEstado -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($p in $json.PSObject.Properties) { $tabla[$p.Name] = $p.Value }
+        return $tabla
+    } catch {
+        # Un estado corrupto no debe impedir instalar: se empieza de cero.
+        return @{}
+    }
+}
+
+function Esta-Hecho {
+    param([string] $Clave)
+    return $script:Estado.ContainsKey($Clave) -and $script:Estado[$Clave]
+}
+
+function Marcar-Hecho {
+    param([string] $Clave)
+    if ($SoloVerificar) { return }
+    $script:Estado[$Clave] = $true
+    try {
+        $script:Estado | ConvertTo-Json | Set-Content -Path $archivoEstado -Encoding UTF8
+    } catch {
+        Escribir-Log "No se pudo guardar el estado: $_" "AVISO"
+    }
+}
+
+# ---------------------------------------------------------------------------
+#  Utilidades resistentes a fallos
+# ---------------------------------------------------------------------------
+
+# Reintenta una accion con esperas crecientes. Devuelve $true si logro pasar.
+function Reintentar {
+    param(
+        [scriptblock] $Accion,
+        [string] $Descripcion,
+        [int] $Intentos = 3,
+        [int] $EsperaBase = 5
+    )
+    for ($i = 1; $i -le $Intentos; $i++) {
+        try {
+            & $Accion
+            return $true
+        } catch {
+            $msg = $_.Exception.Message
+            Escribir-Log "Intento $i/$Intentos de '$Descripcion' fallo: $msg" "AVISO"
+            if ($i -lt $Intentos) {
+                $espera = $EsperaBase * $i
+                Write-Host "      ... fallo el intento $i de $Intentos. Reintentando en $espera s." -ForegroundColor Yellow
+                Write-Host "          ($msg)" -ForegroundColor DarkGray
+                Start-Sleep -Seconds $espera
+            } else {
+                Write-Host "      ... agotados los $Intentos intentos." -ForegroundColor Red
+                Write-Host "          ($msg)" -ForegroundColor DarkGray
+            }
+        }
+    }
+    return $false
+}
+
+# NOTA sobre las descargas grandes: no las hace este script a mano, sino las
+# herramientas que ya saben reanudarlas y verificarlas:
+#   - Los programas base (Java, Python) -> winget, que valida el paquete.
+#   - Las librerias de Python (~2 GB)   -> pip con una cache propia en
+#     logs\pip-cache: lo ya descargado no se vuelve a bajar, y las fases
+#     completadas quedan anotadas en instalacion-estado.json.
+#   - Los modelos de reconocimiento      -> los baja DeepFace; aqui se limpian
+#     los restos .part de intentos anteriores y se reutilizan si ya estaban.
+
+# Ejecuta un programa externo y devuelve su salida como TEXTO LIMPIO junto con el
+# codigo de salida. Necesario porque PowerShell 5.1, al redirigir 2>&1, convierte
+# las lineas de error en objetos ErrorRecord que ensucian la salida.
+function Ejecutar-Nativo {
+    param(
+        [string]   $Programa,
+        [string[]] $Argumentos = @()
+    )
+    $lineas = & $Programa @Argumentos 2>&1 | ForEach-Object {
+        if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { $_.ToString() }
+    }
+    return [pscustomobject]@{
+        Texto  = ($lineas -join "`n")
+        Codigo = $LASTEXITCODE
+    }
+}
+
+function Probar-Puerto {
+    param([int] $Puerto)
+    return $null -ne (Get-NetTCPConnection -LocalPort $Puerto -State Listen -ErrorAction SilentlyContinue)
+}
+
+# ¿Existe la regla de firewall que crea este instalador?
+#
+# Solo se busca POR NOMBRE, a proposito. Windows no ofrece una consulta rapida
+# "¿que reglas abren el puerto X?": hay que recorrer las reglas una por una
+# preguntando su filtro de puertos, y en un equipo normal (unas 300 reglas
+# entrantes) eso tarda cerca de minuto y medio. Demasiado para un paso que solo
+# informa.
+#
+# La consecuencia es que si otra regla ya abria el puerto, aqui se dira que falta
+# la nuestra. No es grave: crearla igualmente es inofensivo, y quien decide de
+# verdad si los celulares pueden conectarse es la prueba de acceso por red del
+# final, que si es concluyente.
+function Existe-Regla-Firewall {
+    param([string] $Nombre)
+    return $null -ne (Get-NetFirewallRule -DisplayName $Nombre -ErrorAction SilentlyContinue)
+}
+
+function Hay-Internet {
+    try {
+        return (Test-NetConnection-Simple "pypi.org" 443)
+    } catch { return $false }
+}
+
+function Test-NetConnection-Simple {
+    param([string] $Host_, [int] $Puerto)
+    try {
+        $cliente = New-Object System.Net.Sockets.TcpClient
+        $tarea = $cliente.ConnectAsync($Host_, $Puerto)
+        $listo = $tarea.Wait(6000)
+        $cliente.Close()
+        return $listo
+    } catch { return $false }
+}
+
+function Buscar-Programa {
+    param([string] $Comando, [string[]] $RutasExtra = @())
+    $encontrado = Get-Command $Comando -ErrorAction SilentlyContinue
+    if ($encontrado) { return $encontrado.Source }
+    foreach ($r in $RutasExtra) {
+        $expandida = Get-ChildItem -Path $r -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($expandida) { return $expandida.FullName }
+    }
+    return $null
+}
+
+function Instalar-Con-Winget {
+    param([string] $Id, [string] $Nombre)
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        Aviso "No hay winget en esta PC: hay que instalar $Nombre a mano."
+        return $false
+    }
+    Info "Instalando $Nombre con winget (puede tardar varios minutos)..."
+    $accion = {
+        $p = Start-Process -FilePath "winget" -ArgumentList @(
+            "install", "--id", $Id, "--exact", "--silent",
+            "--accept-package-agreements", "--accept-source-agreements"
+        ) -Wait -PassThru -NoNewWindow
+        # 0 = instalado, -1978335189 = ya estaba instalado
+        if ($p.ExitCode -ne 0 -and $p.ExitCode -ne -1978335189) {
+            throw "winget devolvio el codigo $($p.ExitCode)"
+        }
+    }
+    return (Reintentar -Accion $accion -Descripcion "instalacion de $Nombre" -Intentos 2 -EsperaBase 10)
+}
+
+# Descarga un archivo con reintentos. Guarda en .part y solo lo da por bueno si
+# el tamano coincide con el que anuncio el servidor.
+function Descargar-Archivo {
+    param([string] $Url, [string] $Destino, [string] $Nombre = "archivo")
+
+    if (Test-Path $Destino) { return $true }
+    $parcial = "$Destino.part"
+
+    $bajar = {
+        if (Test-Path $parcial) { Remove-Item $parcial -Force -ErrorAction SilentlyContinue }
+        $antes = $ProgressPreference
+        $ProgressPreference = "Continue"
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $parcial -UseBasicParsing -TimeoutSec 180 -ErrorAction Stop
+        } finally { $ProgressPreference = $antes }
+
+        # Comprobacion de que llego completo.
+        $esperado = 0
+        try {
+            $cab = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+            $esperado = [int64]$cab.Headers['Content-Length']
+        } catch { }
+        $real = (Get-Item $parcial).Length
+        if ($esperado -gt 0 -and $real -ne $esperado) {
+            Remove-Item $parcial -Force -ErrorAction SilentlyContinue
+            throw "la descarga quedo incompleta ($real de $esperado bytes)"
+        }
+        Move-Item -Path $parcial -Destination $Destino -Force -ErrorAction Stop
+    }
+
+    return (Reintentar -Accion $bajar -Descripcion "descarga de $Nombre" -Intentos 3 -EsperaBase 8)
+}
+
+# Instala Python 3.12 SIN depender de winget, que en equipos administrados
+# (laboratorios, dominios) suele estar restringido por politica.
+# Orden: 1) el instalador que viene incluido  2) descarga de python.org
+#        3) winget, como ultimo recurso.
+function Instalar-Python {
+    $carpetaReq = Join-Path $Carpeta "requisitos"
+    $instaladorPy = $null
+
+    # 1) ¿Vino incluido en el paquete?
+    if (Test-Path $carpetaReq) {
+        $instaladorPy = Get-ChildItem (Join-Path $carpetaReq "python-3.12*-amd64.exe") -ErrorAction SilentlyContinue |
+                        Select-Object -First 1 | ForEach-Object { $_.FullName }
+        if ($instaladorPy) { Ok "Se usara el instalador de Python incluido en el paquete." }
+    }
+
+    # 2) Descargarlo de python.org
+    if (-not $instaladorPy) {
+        $descargas = Join-Path $carpetaLogs "descargas"
+        if (-not (Test-Path $descargas)) { New-Item -ItemType Directory -Path $descargas -Force | Out-Null }
+        $destino = Join-Path $descargas "python-$VERSION_PYTHON-amd64.exe"
+        Info "Descargando Python $VERSION_PYTHON de python.org (25 MB)..."
+        if (Descargar-Archivo "https://www.python.org/ftp/python/$VERSION_PYTHON/python-$VERSION_PYTHON-amd64.exe" `
+                              $destino "Python $VERSION_PYTHON") {
+            $instaladorPy = $destino
+        }
+    }
+
+    # 3) Ejecutarlo.
+    #    Se usa /passive y NO /quiet: el instalador de Python muestra su propia
+    #    barra de progreso, sin pedir nada. Con /quiet no se ve absolutamente
+    #    nada y no hay forma de distinguir "trabajando" de "colgado".
+    if ($instaladorPy) {
+        $registroPy = Join-Path $carpetaLogs "python-instalacion.log"
+        Info "Instalando Python. Aparecera su propia ventana de progreso."
+        Info "Suele tardar 2-5 minutos. No la cierres."
+
+        $ejecutar = {
+            $p = Start-Process -FilePath $instaladorPy -PassThru -ArgumentList @(
+                "/passive", "/log", "`"$registroPy`"",
+                "InstallAllUsers=1", "PrependPath=1",
+                "Include_launcher=1", "InstallLauncherAllUsers=1", "Include_test=0"
+            )
+
+            # Espera con senales de vida y un limite: si se cuelga, no deja
+            # el instalador esperando para siempre.
+            $limiteSegundos = 900          # 15 minutos
+            $transcurrido = 0
+            while (-not $p.HasExited -and $transcurrido -lt $limiteSegundos) {
+                Start-Sleep -Seconds 15
+                $transcurrido += 15
+                if ($transcurrido % 60 -eq 0) {
+                    Write-Host ("        ... sigue instalando ({0} min)" -f ($transcurrido / 60)) -ForegroundColor DarkGray
+                }
+            }
+
+            if (-not $p.HasExited) {
+                try { $p.Kill() } catch { }
+                throw "el instalador de Python no termino en 15 minutos; se cancelo"
+            }
+            # 0 = instalado, 3010 = instalado pero pide reinicio
+            if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+                throw "el instalador de Python devolvio el codigo $($p.ExitCode) (detalle en logs\python-instalacion.log)"
+            }
+        }
+        if (Reintentar -Accion $ejecutar -Descripcion "instalacion de Python" -Intentos 2 -EsperaBase 10) {
+            Refrescar-Path
+            return $true
+        }
+        Aviso "Puedes instalar Python a mano: $instaladorPy"
+        Aviso "Marca 'Add Python to PATH' y luego vuelve a ejecutar este instalador."
+    }
+
+    # 4) Ultimo recurso: winget
+    Aviso "Se intentara con winget como ultimo recurso."
+    if (Instalar-Con-Winget "Python.Python.3.12" "Python 3.12") {
+        Refrescar-Path
+        return $true
+    }
+    return $false
+}
+
+# Instala Java 21 SIN depender de winget, igual que Python: en equipos
+# administrados winget suele estar restringido y fue justo lo que fallo en la
+# prueba del laboratorio.
+# Orden: 1) el instalador incluido en el paquete  2) descarga de Microsoft
+#        3) winget, como ultimo recurso.
+function Instalar-Java {
+    $carpetaReq = Join-Path $Carpeta "requisitos"
+    $msi = $null
+
+    # 1) ¿Vino incluido?
+    if (Test-Path $carpetaReq) {
+        $msi = Get-ChildItem (Join-Path $carpetaReq "microsoft-jdk-*windows-x64.msi") -ErrorAction SilentlyContinue |
+               Select-Object -First 1 | ForEach-Object { $_.FullName }
+        if ($msi) { Ok "Se usara el instalador de Java incluido en el paquete." }
+    }
+
+    # 2) Descargarlo de Microsoft
+    if (-not $msi) {
+        $descargas = Join-Path $carpetaLogs "descargas"
+        if (-not (Test-Path $descargas)) { New-Item -ItemType Directory -Path $descargas -Force | Out-Null }
+        $destino = Join-Path $descargas "microsoft-jdk-$JAVA_MINIMO-windows-x64.msi"
+        Info "Descargando Java $JAVA_MINIMO de Microsoft (170 MB)..."
+        if (Descargar-Archivo "https://aka.ms/download-jdk/microsoft-jdk-$JAVA_MINIMO-windows-x64.msi" `
+                              $destino "Java $JAVA_MINIMO") {
+            $msi = $destino
+        }
+    }
+
+    # 3) Instalarlo en silencio. INSTALLDIR y ADDLOCAL aseguran que quede en el PATH,
+    #    porque el lanzador invoca "java" a secas.
+    if ($msi) {
+        $registroJava = Join-Path $carpetaLogs "java-instalacion.log"
+        Info "Instalando Java (sin ventanas, tarda un par de minutos)..."
+        $ejecutar = {
+            $p = Start-Process -FilePath "msiexec.exe" -PassThru -ArgumentList @(
+                "/i", "`"$msi`"", "/quiet", "/norestart",
+                "ADDLOCAL=FeatureMain,FeatureEnvironment,FeatureJarFileRunWith,FeatureJavaHome",
+                "/l*v", "`"$registroJava`""
+            )
+            $limite = 900; $transcurrido = 0
+            while (-not $p.HasExited -and $transcurrido -lt $limite) {
+                Start-Sleep -Seconds 15; $transcurrido += 15
+                if ($transcurrido % 60 -eq 0) {
+                    Write-Host ("        ... sigue instalando Java ({0} min)" -f ($transcurrido / 60)) -ForegroundColor DarkGray
+                }
+            }
+            if (-not $p.HasExited) {
+                try { $p.Kill() } catch { }
+                throw "el instalador de Java no termino en 15 minutos; se cancelo"
+            }
+            # 0 = instalado, 3010 = instalado pero pide reinicio
+            if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+                throw "msiexec devolvio el codigo $($p.ExitCode) (detalle en logs\java-instalacion.log)"
+            }
+        }
+        if (Reintentar -Accion $ejecutar -Descripcion "instalacion de Java" -Intentos 2 -EsperaBase 10) {
+            Refrescar-Path
+            return $true
+        }
+        Aviso "Puedes instalar Java a mano: $msi"
+    }
+
+    # 4) Ultimo recurso: winget
+    Aviso "Se intentara con winget como ultimo recurso."
+    if (Instalar-Con-Winget "Microsoft.OpenJDK.$JAVA_MINIMO" "Java (OpenJDK $JAVA_MINIMO)") {
+        Refrescar-Path
+        return $true
+    }
+    return $false
+}
+
+# Lee la version mayor de Java a partir de la salida de "java -version".
+# El formato antiguo (Java 8 y anteriores) es "1.8.0_401": ahi el numero que
+# importa es el segundo, no el primero.
+function Leer-Version-Java {
+    param([string] $Salida)
+    if ($Salida -match '(?:version "|openjdk )(\d+)(?:\.(\d+))?') {
+        $mayor = [int]$Matches[1]
+        if ($mayor -eq 1 -and $Matches[2]) { return [int]$Matches[2] }
+        return $mayor
+    }
+    return 0
+}
+
+function Refrescar-Path {
+    # Tras instalar algo, el PATH de esta sesion no lo conoce todavia.
+    $maquina = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $usuario = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$maquina;$usuario"
+}
+
+# ---------------------------------------------------------------------------
+#  Arranque
+# ---------------------------------------------------------------------------
+
+if (-not (Test-Path $carpetaLogs)) { New-Item -ItemType Directory -Path $carpetaLogs -Force | Out-Null }
+$script:Estado = Leer-Estado
+
+# Lo PRIMERO de todo: que un clic dentro de la ventana no congele la instalacion.
+$sinPausa = Desactivar-PausaPorClic
+
+Clear-Host
+Write-Host ""
+Write-Host "  ==================================================================" -ForegroundColor Cyan
+Write-Host "     CASA KETTELER - Instalacion del sistema" -ForegroundColor Cyan
+Write-Host "  ==================================================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "     Carpeta:  $Carpeta" -ForegroundColor Gray
+Write-Host "     Registro: $archivoLog" -ForegroundColor Gray
+if ($SoloVerificar) {
+    Write-Host ""
+    Write-Host "     MODO REVISION: no se modificara nada." -ForegroundColor Yellow
+}
+if ($script:Estado.Count -gt 0 -and -not $SoloVerificar) {
+    Write-Host ""
+    Write-Host "     Se encontro una instalacion previa a medias:" -ForegroundColor Yellow
+    Write-Host "     se continuara donde quedo (no se repite lo ya hecho)." -ForegroundColor Yellow
+}
+if (-not $sinPausa) {
+    # No se pudo apagar el modo QuickEdit: hay que avisar, porque un clic
+    # dentro de la ventana congelaria la instalacion sin explicacion.
+    Write-Host ""
+    Write-Host "     AVISO: no hagas clic dentro de esta ventana." -ForegroundColor Yellow
+    Write-Host "     Windows pausaria la instalacion. Si pasa, pulsa ENTER." -ForegroundColor Yellow
+}
+Write-Host ""
+
+Escribir-Log "########## Inicio de instalacion en $Carpeta ##########"
+Escribir-Log "Pausa por clic (QuickEdit) desactivada: $sinPausa"
+
+# ---------------------------------------------------------------------------
+#  Reparacion: se borra lo estropeado y se olvida su avance, para que los pasos
+#  de mas abajo lo rehagan. Todo lo demas se conserva.
+# ---------------------------------------------------------------------------
+if ($Reparar -and -not $SoloVerificar) {
+    Write-Host "  MODO REPARACION: $Reparar" -ForegroundColor Magenta
+    Escribir-Log "Reparacion solicitada: $Reparar"
+
+    $repararPython = $Reparar -in @('python', 'todo')
+    $repararModelos = $Reparar -in @('modelos', 'todo')
+    $repararConfig = $Reparar -in @('configuracion', 'todo')
+
+    if ($repararPython) {
+        $venvRep = Join-Path $Carpeta "python_scripts\venv_perfecto"
+        if (Test-Path $venvRep) {
+            Remove-Item $venvRep -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "     Entorno de Python eliminado; se recreara." -ForegroundColor Gray
+        }
+        foreach ($k in @('pip-herramientas', 'pip-torch', 'pip-tensorflow', 'pip-resto', 'python-verificado')) {
+            $script:Estado.Remove($k)
+        }
+        # La cache de pip NO se borra a proposito: reinstalar sin volver a
+        # descargar los 2 GB es justamente lo que hace util esta opcion.
+        Write-Host "     Se conserva la cache de pip: no habra que descargar de nuevo." -ForegroundColor Gray
+    }
+
+    if ($repararModelos) {
+        $pesosRep = Join-Path $Carpeta "python_scripts\.deepface"
+        if (Test-Path $pesosRep) {
+            Remove-Item $pesosRep -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "     Modelos eliminados; se volveran a preparar." -ForegroundColor Gray
+        }
+        $script:Estado.Remove('modelos')
+    }
+
+    if ($repararConfig) {
+        $envRep = Join-Path $Carpeta ".env"
+        if (Test-Path $envRep) {
+            $copiaRep = Join-Path $carpetaLogs ("env-antes-de-reparar-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".txt")
+            Move-Item $envRep $copiaRep -Force
+            Write-Host "     .env apartado en logs\$(Split-Path $copiaRep -Leaf); se generara uno nuevo." -ForegroundColor Gray
+        }
+        $propsRep = Join-Path $Carpeta "application-prod.properties"
+        if (Test-Path $propsRep) { Remove-Item $propsRep -Force -ErrorAction SilentlyContinue }
+        $script:Estado.Remove('env')
+    }
+
+    # Se guarda el estado ya recortado para que la reanudacion sea coherente.
+    try { $script:Estado | ConvertTo-Json | Set-Content -Path $archivoEstado -Encoding UTF8 } catch { }
+    Write-Host ""
+}
+
+$TOTAL = 9
+
+# ===========================================================================
+#  PASO 1 - Comprobaciones del sistema
+# ===========================================================================
+Mostrar-Paso 1 $TOTAL "Comprobaciones del sistema"
+
+$esAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+           ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if ($esAdmin) {
+    Ok "Se esta ejecutando como administrador."
+} else {
+    if ($SoloVerificar) {
+        Aviso "Sin permisos de administrador (en modo revision no importa)."
+    } else {
+        Fallo "Hacen falta permisos de administrador." `
+              "Cierra esta ventana y usa clic derecho -> 'Ejecutar como administrador' sobre instalar.bat"
+        exit 1
+    }
+}
+
+$unidad = (Get-Item $Carpeta).PSDrive
+if ($unidad) {
+    $libreGB = [Math]::Round($unidad.Free / 1GB, 1)
+    if ($libreGB -lt $ESPACIO_MINIMO_GB) {
+        Fallo "Solo hay $libreGB GB libres en $($unidad.Name): y se necesitan $ESPACIO_MINIMO_GB GB." `
+              "Libera espacio (el entorno de Python ocupa unos 2 GB y los modelos otro tanto) y vuelve a ejecutar."
+        if (-not $SoloVerificar) { exit 1 }
+    } else {
+        Ok "Espacio en disco suficiente ($libreGB GB libres)."
+    }
+}
+
+if (Hay-Internet) {
+    Ok "Hay conexion a Internet."
+} else {
+    Aviso "No se detecta Internet. Las descargas fallaran; si ya estaba todo bajado, puede continuar."
+}
+
+Info "Windows: $((Get-CimInstance Win32_OperatingSystem).Caption)"
+
+# --- Software que restaura el equipo al reiniciar ---
+#
+# Habitual en laboratorios y salas de computo: al apagar, el disco vuelve a su
+# estado anterior y la instalacion DESAPARECE. Conviene avisarlo ANTES, porque el
+# entorno de Python solo tarda entre 20 y 40 minutos en instalarse.
+$restauradores = @(
+    @{ Servicio = 'DFServ';          Nombre = 'Deep Freeze' },
+    @{ Servicio = 'DeepFrz';         Nombre = 'Deep Freeze' },
+    @{ Servicio = 'RebootRestoreRx'; Nombre = 'Reboot Restore Rx' },
+    @{ Servicio = 'ShadowDefender';  Nombre = 'Shadow Defender' },
+    @{ Servicio = 'wsdrvnt';         Nombre = 'Shadow Defender' }
+)
+$congelador = $null
+foreach ($r in $restauradores) {
+    if (Get-Service -Name $r.Servicio -ErrorAction SilentlyContinue) { $congelador = $r.Nombre; break }
+}
+if (-not $congelador) {
+    foreach ($p in @('FrzState2k', 'DFServ', 'RestoreRx')) {
+        if (Get-Process -Name $p -ErrorAction SilentlyContinue) { $congelador = $p; break }
+    }
+}
+
+if ($congelador) {
+    Write-Host ""
+    Write-Host "      +--------------------------------------------------------------+" -ForegroundColor Magenta
+    Write-Host "      |  ATENCION: esta computadora se restaura al reiniciar          |" -ForegroundColor Magenta
+    Write-Host "      +--------------------------------------------------------------+" -ForegroundColor Magenta
+    Write-Host "      Se detecto: $congelador" -ForegroundColor Magenta
+    Write-Host ""
+    Write-Host "      Todo lo que se instale ahora DESAPARECERA al apagar el equipo," -ForegroundColor Yellow
+    Write-Host "      incluidas las 2 horas de descargas. Sirve para una demostracion," -ForegroundColor Yellow
+    Write-Host "      no para dejar el sistema operando." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "      Para instalarlo de verdad hay que desactivar esa proteccion antes" -ForegroundColor Yellow
+    Write-Host "      (en Deep Freeze: modo 'Thawed') y volver a ejecutar." -ForegroundColor Yellow
+    Write-Host ""
+    Aviso "Equipo con restauracion automatica ($congelador): la instalacion no sobrevivira al reinicio."
+
+    if (-not $Desatendido -and -not $SoloVerificar) {
+        $seguir = Read-Host "      Escribe SI para continuar de todos modos"
+        if ($seguir -notmatch '^\s*(si|s|yes|y)\s*$') {
+            Write-Host "      Instalacion cancelada." -ForegroundColor Yellow
+            Escribir-Log "Cancelada por el usuario: equipo con $congelador" "ERROR"
+            exit 1
+        }
+    }
+} else {
+    Ok "El equipo no tiene restauracion automatica al reiniciar."
+}
+
+# ===========================================================================
+#  PASO 2 - Programas base
+# ===========================================================================
+Mostrar-Paso 2 $TOTAL "Programas base (Java, Python, MySQL)"
+
+# --- Java 21 ---
+#
+# Se mira primero el PATH, que es lo que usa el lanzador ("java -jar"). Si no
+# esta ahi, se buscan las ubicaciones habituales: sirve para distinguir entre
+# "no hay Java" y "hay Java pero el PATH no lo ve", que se arreglan distinto.
+$rutasJava = @(
+    "C:\Program Files\Microsoft\jdk-*\bin\java.exe",
+    "C:\Program Files\Java\jdk-*\bin\java.exe",
+    "C:\Program Files\Eclipse Adoptium\jdk-*\bin\java.exe",
+    "C:\Program Files\Zulu\zulu-*\bin\java.exe",
+    "C:\Program Files\Amazon Corretto\jdk*\bin\java.exe"
+)
+
+$javaOk = $false
+$verJava = 0
+$javaEnPath = $null -ne (Get-Command "java" -ErrorAction SilentlyContinue)
+$java = Buscar-Programa "java" $rutasJava
+
+# Comprueba el Java disponible y deja en $javaOk / $verJava el resultado.
+function Revisar-Java {
+    $enPath = $null -ne (Get-Command "java" -ErrorAction SilentlyContinue)
+    $ruta = Buscar-Programa "java" $rutasJava
+    if (-not $ruta) { return @{ Ok = $false; Version = 0; EnPath = $false; Ruta = $null } }
+    $v = Leer-Version-Java (Ejecutar-Nativo $ruta @("-version")).Texto
+    return @{ Ok = ($v -ge $JAVA_MINIMO -and $enPath); Version = $v; EnPath = $enPath; Ruta = $ruta }
+}
+
+$j = Revisar-Java
+
+# Se intenta instalar siempre que no sirva: puede faltar, ser demasiado antiguo
+# o estar fuera del PATH. El instalador de Microsoft resuelve los tres casos.
+if (-not $j.Ok -and -not $SoloVerificar) {
+    if ($j.Version -eq 0)                  { Info "No se encontro Java." }
+    elseif ($j.Version -lt $JAVA_MINIMO)   { Aviso "Java $($j.Version) es demasiado antiguo (se necesita $JAVA_MINIMO o superior)." }
+    elseif (-not $j.EnPath)                { Aviso "Java $($j.Version) esta instalado pero NO en el PATH: $($j.Ruta)" }
+
+    if (Instalar-Java) { $j = Revisar-Java }   # se revisa de nuevo la VERSION, no solo que exista
+}
+
+$javaOk = $j.Ok
+$verJava = $j.Version
+
+if ($javaOk) {
+    Ok "Java $verJava detectado."
+    if ($verJava -gt $JAVA_MINIMO) {
+        Info "El sistema se compilo para Java $JAVA_MINIMO; con $verJava funciona igual."
+    }
+} elseif ($verJava -ge $JAVA_MINIMO -and -not $j.EnPath) {
+    # Existe y la version sirve, pero el lanzador invoca "java" a secas y no lo
+    # encontraria: el sistema no arrancaria.
+    Write-Host "              El sistema no arrancaria: el lanzador invoca 'java' a secas." -ForegroundColor Yellow
+    Pendiente "Anadir al PATH la carpeta: $(Split-Path $j.Ruta)"
+} elseif ($verJava -gt 0 -and $verJava -lt $JAVA_MINIMO) {
+    Pendiente "Actualizar a JDK $JAVA_MINIMO o superior; el instalado es Java $verJava (https://learn.microsoft.com/java/openjdk/download)"
+} else {
+    Pendiente "Instalar JDK $JAVA_MINIMO (https://learn.microsoft.com/java/openjdk/download)"
+}
+
+# --- Python 3.10 a 3.12 ---
+# En una PC puede haber VARIAS versiones de Python a la vez, y el 'python' del
+# PATH no suele ser la que queremos (las dependencias estan fijadas para 3.12).
+# Por eso se pide una version concreta con el lanzador 'py -3.12', de mas nueva
+# a mas antigua, y solo al final se acepta el 'python' del PATH.
+$pythonOk   = $false
+$pythonExe  = $null
+$pythonArgs = @()
+
+$candidatos = @()
+foreach ($v in ($PYTHON_SOPORTADO | Sort-Object -Descending)) {
+    $candidatos += @{ Programa = "py"; Previos = @("-$v"); Etiqueta = "py -$v" }
+}
+$candidatos += @{ Programa = "python"; Previos = @(); Etiqueta = "python (del PATH)" }
+
+foreach ($c in $candidatos) {
+    $p = Buscar-Programa $c.Programa
+    if (-not $p) { continue }
+    $argumentos = $c.Previos + @("-c", "import sys; print('%d.%d' % sys.version_info[:2])")
+    $r = Ejecutar-Nativo $p $argumentos
+    if ($r.Codigo -ne 0) { continue }
+    $v = $r.Texto.Trim()
+    if ($PYTHON_SOPORTADO -contains $v) {
+        Ok "Python $v detectado ($($c.Etiqueta))."
+        $pythonExe = $p; $pythonArgs = $c.Previos; $pythonOk = $true
+        break
+    }
+}
+
+if (-not $pythonOk -and -not $SoloVerificar) {
+    if (Instalar-Python) {
+        # Se vuelve a buscar, igual que arriba: puede haber quedado como
+        # "py -3.12" o como el "python" del PATH.
+        foreach ($c in $candidatos) {
+            $p = Buscar-Programa $c.Programa
+            if (-not $p) { continue }
+            $r = Ejecutar-Nativo $p ($c.Previos + @("-c", "import sys; print('%d.%d' % sys.version_info[:2])"))
+            if ($r.Codigo -eq 0 -and ($PYTHON_SOPORTADO -contains $r.Texto.Trim())) {
+                $pythonExe = $p; $pythonArgs = $c.Previos; $pythonOk = $true
+                Ok "Python $($r.Texto.Trim()) instalado ($($c.Etiqueta))."
+                break
+            }
+        }
+        if (-not $pythonOk) {
+            Aviso "Python quedo instalado pero aun no aparece en el PATH de esta ventana."
+            Pendiente "Cierra esta ventana y vuelve a ejecutar el instalador: Python ya estara disponible."
+        }
+    }
+}
+if (-not $pythonOk) {
+    Pendiente "Instalar Python 3.12 marcando 'Add Python to PATH' (https://www.python.org/downloads/)"
+}
+
+# --- MySQL 8 ---
+# No se instala en silencio a proposito: el instalador de MySQL pide configurar
+# la contraseña de root de forma interactiva y automatizarlo es poco fiable.
+$mysqlExe = Buscar-Programa "mysql" @(
+    "C:\Program Files\MySQL\MySQL Server 8*\bin\mysql.exe",
+    "C:\Program Files (x86)\MySQL\MySQL Server 8*\bin\mysql.exe"
+)
+$mysqlOk = $false
+if ($mysqlExe) {
+    Ok "MySQL detectado en $mysqlExe"
+    $mysqlOk = $true
+
+    # Que el programa este instalado no significa que el servidor este en marcha.
+    # Importa comprobarlo AQUI y no mas adelante: el paso 4 verifica la contraseña
+    # contra el servidor, y si estuviera apagado diria que la contraseña es
+    # incorrecta cuando el problema es otro.
+    $servicioMysql = Get-Service -Name "MySQL*" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $servicioMysql) {
+        Aviso "No se encontro el servicio de MySQL; puede estar instalado de otra forma."
+    } elseif ($servicioMysql.Status -eq 'Running') {
+        Ok "El servidor MySQL esta en marcha ($($servicioMysql.Name))."
+    } elseif ($SoloVerificar) {
+        Pendiente "El servicio $($servicioMysql.Name) esta DETENIDO: el sistema no podria guardar nada."
+    } else {
+        Info "El servicio $($servicioMysql.Name) esta detenido; se va a iniciar..."
+        $arrancar = {
+            Start-Service -Name $servicioMysql.Name -ErrorAction Stop
+            $servicioMysql.WaitForStatus('Running', (New-TimeSpan -Seconds 45))
+        }
+        if (Reintentar -Accion $arrancar -Descripcion "arranque de MySQL" -Intentos 2 -EsperaBase 5) {
+            Ok "Servidor MySQL iniciado."
+        } else {
+            Pendiente "Arrancar el servicio $($servicioMysql.Name) de MySQL (services.msc)."
+            $mysqlOk = $false
+        }
+    }
+} else {
+    Pendiente "Instalar MySQL Server 8 y anotar la contraseña de root (https://dev.mysql.com/downloads/installer/)"
+    Aviso "MySQL se instala a mano porque su asistente pide definir la contraseña de root."
+}
+
+$mysqldumpExe = $null
+if ($mysqlOk) {
+    $mysqldumpExe = Join-Path (Split-Path $mysqlExe) "mysqldump.exe"
+    if (Test-Path $mysqldumpExe) { Ok "mysqldump disponible (respaldos automaticos)." }
+    else { Aviso "No se encontro mysqldump.exe junto a mysql.exe: los respaldos de la base de datos no funcionaran."; $mysqldumpExe = $null }
+}
+
+if ($script:Pendientes.Count -gt 0 -and -not $SoloVerificar) {
+    Write-Host ""
+    Write-Host "      Faltan programas base. Instalalos y vuelve a ejecutar este" -ForegroundColor Yellow
+    Write-Host "      instalador: continuara donde quedo." -ForegroundColor Yellow
+    Write-Host ""
+    Escribir-Log "Instalacion detenida: faltan programas base." "ERROR"
+    exit 1
+}
+
+# ===========================================================================
+#  PASO 3 - Carpetas del sistema
+# ===========================================================================
+Mostrar-Paso 3 $TOTAL "Carpetas del sistema"
+
+$carpetas = @("storage", "temp", "backups", "logs", "frontend", "target")
+foreach ($c in $carpetas) {
+    $ruta = Join-Path $Carpeta $c
+    if (Test-Path $ruta) {
+        Saltado "$c\"
+    } elseif ($SoloVerificar) {
+        Pendiente "Falta la carpeta $c\"
+    } else {
+        New-Item -ItemType Directory -Path $ruta -Force | Out-Null
+        Ok "Creada $c\"
+    }
+}
+
+# Avisos sobre los archivos que deben traerse compilados.
+$jar = Get-ChildItem (Join-Path $Carpeta "target\*.jar") -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($jar) { Ok "Backend encontrado: $($jar.Name)" }
+else { Pendiente "Copiar el JAR del backend en target\ (generado con .\mvnw.cmd clean package)" }
+
+if (Test-Path (Join-Path $Carpeta "frontend\index.html")) {
+    Ok "Interfaz web encontrada en frontend\"
+} else {
+    Pendiente "Copiar la interfaz web compilada en frontend\ (contenido de dist\front-ketteler\browser\)"
+}
+
+if (Test-Path (Join-Path $Carpeta "python_scripts\ServidorReconocimiento.py")) {
+    Ok "Scripts de reconocimiento facial encontrados."
+} else {
+    Pendiente "Copiar la carpeta python_scripts\ (sin venv_perfecto)"
+}
+
+# ===========================================================================
+#  PASO 4 - Archivo de configuracion (.env)
+# ===========================================================================
+Mostrar-Paso 4 $TOTAL "Archivo de configuracion (.env)"
+
+$archivoEnv = Join-Path $Carpeta ".env"
+$claves = [ordered]@{}
+
+if (Test-Path $archivoEnv) {
+    # Se respeta lo que ya existe: solo se completa lo que falte.
+    Get-Content $archivoEnv | ForEach-Object {
+        $l = $_.Trim()
+        if ($l -and -not $l.StartsWith("#") -and $l.Contains("=")) {
+            $i = $l.IndexOf("=")
+            $claves[$l.Substring(0, $i).Trim()] = $l.Substring($i + 1).Trim()
+        }
+    }
+    Ok ".env existente leido ($($claves.Count) valores). No se sobrescribira lo que ya tiene."
+} else {
+    Info "No hay .env: se creara uno nuevo."
+}
+
+# IP de esta PC en la red local (para CORS y para que el celular la alcance).
+# Se descartan las direcciones 169.254.x.x (las que Windows se inventa cuando no
+# hay DHCP) y la de loopback: no sirven para que el celular alcance al servidor.
+$ipLocal = $null
+try {
+    $validas = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+               Where-Object {
+                   $_.IPAddress -notlike "169.254.*" -and
+                   $_.IPAddress -notlike "127.*" -and
+                   $_.PrefixOrigin -ne "WellKnown"
+               }
+    # Se prefiere la interfaz que tiene la salida a la red (ruta por defecto).
+    $rutaDefecto = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
+                   Sort-Object RouteMetric
+    foreach ($r in $rutaDefecto) {
+        $coincide = $validas | Where-Object { $_.InterfaceIndex -eq $r.ifIndex } | Select-Object -First 1
+        if ($coincide) { $ipLocal = $coincide.IPAddress; break }
+    }
+    # Si no hubo coincidencia, se toma la primera direccion util (DHCP antes que fija).
+    if (-not $ipLocal -and $validas) {
+        $ipLocal = ($validas | Sort-Object { if ($_.PrefixOrigin -eq "Dhcp") { 0 } else { 1 } } |
+                    Select-Object -First 1).IPAddress
+    }
+} catch { }
+
+if ($ipLocal) {
+    Ok "IP de esta PC en la red local: $ipLocal"
+    Aviso "Reserva esta IP en el router (IP fija). Si cambia, hay que regenerar el APK de los residentes."
+} else {
+    Aviso "No se pudo detectar una IP de red util; revisa CORS_ALLOWED_ORIGINS en el .env."
+}
+
+function Poner-Clave {
+    param([string] $Nombre, [string] $Valor, [switch] $NoMostrar)
+    if ($claves.Contains($Nombre) -and $claves[$Nombre] -and
+        $claves[$Nombre] -notmatch "^(REEMPLAZAR|tu_correo_real|C:/ruta)") {
+        Saltado "$Nombre ya estaba definido."
+        return
+    }
+    $claves[$Nombre] = $Valor
+    if ($NoMostrar) { Ok "$Nombre generado." } else { Ok "$Nombre = $Valor" }
+}
+
+if (-not $SoloVerificar) {
+    # --- Contraseña de MySQL ---
+    #
+    # Toda contraseña se comprueba contra el servidor, INCLUIDA la que ya venia en
+    # el .env. Antes se daba por buena sin probarla, asi que una contraseña
+    # caducada (o de otra instalacion) pasaba de largo y el fallo aparecia mas
+    # tarde, al crear la base de datos, con un mensaje que no explicaba nada.
+    $passMysql = $null
+    $passValida = $false
+
+    # 1) La guardada en el .env, si la hay.
+    if ($claves.Contains("DB_PASSWORD") -and $claves["DB_PASSWORD"]) {
+        $candidata = $claves["DB_PASSWORD"]
+        if ($mysqlOk) {
+            $prueba = Ejecutar-Nativo $mysqlExe @("-uroot", "-p$candidata", "-e", "SELECT 1;")
+            if ($prueba.Codigo -eq 0) {
+                $passMysql = $candidata; $passValida = $true
+                Ok "La contraseña de MySQL del .env funciona."
+            } else {
+                Aviso "La contraseña de MySQL guardada en el .env YA NO FUNCIONA."
+            }
+        } else {
+            # Sin servidor no se puede comprobar: se conserva y se avisa, en vez de
+            # dar por hecho que esta mal.
+            $passMysql = $candidata
+            Aviso "No se pudo comprobar la contraseña del .env: MySQL no responde."
+        }
+    }
+
+    # 2) Si no sirve, se pide.
+    if (-not $passValida -and $mysqlOk) {
+        if ($Desatendido) {
+            Aviso "Modo desatendido: no se puede pedir la contraseña de MySQL."
+        } else {
+            for ($i = 1; $i -le 3; $i++) {
+                Write-Host ""
+                Write-Host "      Escribe la contraseña de 'root' de MySQL de esta PC:" -ForegroundColor White
+                $segura = Read-Host "      Contraseña" -AsSecureString
+                $intento = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+                              [Runtime.InteropServices.Marshal]::SecureStringToBSTR($segura))
+                $prueba = Ejecutar-Nativo $mysqlExe @("-uroot", "-p$intento", "-e", "SELECT 1;")
+                if ($prueba.Codigo -eq 0) {
+                    $passMysql = $intento; $passValida = $true
+                    Ok "Contraseña verificada contra MySQL."
+                    break
+                }
+                Write-Host "      Esa contraseña no funciona. Te quedan $(3 - $i) intentos." -ForegroundColor Red
+            }
+            if (-not $passValida) {
+                Pendiente "La contraseña de 'root' de MySQL no se pudo verificar: la base de datos no funcionara."
+            }
+        }
+    }
+
+    # Se asigna directamente y no con Poner-Clave: esa funcion respeta el valor
+    # que ya hubiera en el .env, y aqui hace falta justo lo contrario, sustituir
+    # la contraseña vieja por la que se acaba de verificar.
+    if ($passMysql) {
+        $claves["DB_PASSWORD"] = $passMysql
+        if ($passValida) { Ok "DB_PASSWORD actualizado con la contraseña verificada." }
+    }
+
+    Poner-Clave "SPRING_PROFILES_ACTIVE" "prod"
+    Poner-Clave "DB_HOST"     "localhost"
+    Poner-Clave "DB_PORT"     "3306"
+    Poner-Clave "DB_NAME"     $NOMBRE_BD
+    Poner-Clave "DB_USERNAME" "root"
+
+    # El perfil 'prod' arma la conexion con DB_URL (una sola cadena), no con
+    # DB_HOST/DB_PORT/DB_NAME por separado. Sin esta clave el backend no arranca.
+    $urlBd = "jdbc:mysql://localhost:3306/$NOMBRE_BD" +
+             "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima"
+    Poner-Clave "DB_URL" $urlBd
+
+    # Clave de firma de sesiones: aleatoria y distinta en cada instalacion.
+    $secreto = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
+    Poner-Clave "JWT_SECRET" $secreto -NoMostrar
+
+    $rutaBarras = $Carpeta.Replace("\", "/")
+    Poner-Clave "APP_STORAGE_PATH" "$rutaBarras/storage"
+    Poner-Clave "APP_TEMP_PATH"    "$rutaBarras/temp"
+    Poner-Clave "APP_FRONTEND_PATH" "$rutaBarras/frontend/"
+
+    # Los modelos de reconocimiento se guardan DENTRO de la instalacion y no en
+    # la carpeta del usuario. Motivo: el arranque automatico corre como SYSTEM,
+    # que tiene otro perfil, y volveria a descargar los 260 MB de modelos.
+    Poner-Clave "DEEPFACE_HOME" "$rutaBarras/python_scripts"
+
+    # Sin esto, el servidor de reconocimiento se cae al escribir en su registro:
+    # DeepFace usa emojis en los mensajes y la salida redirigida va en cp1252.
+    Poner-Clave "PYTHONIOENCODING" "utf-8"
+
+    # Cuenta de administracion del primer arranque. Sin ella la instalacion queda
+    # inservible: hay tablas pero nadie con quien entrar, y los residentes solo
+    # los puede dar de alta un administrador.
+    # La contraseña se genera distinta en cada instalacion: una fija y conocida
+    # en el codigo seria la misma en todas las residencias.
+    Poner-Clave "ADMIN_INICIAL_EMAIL" $ADMIN_EMAIL_POR_DEFECTO
+    $letras = "ABCDEFGHJKLMNPQRSTUVWXYZ"      # sin I ni O, para no confundir al teclearla
+    $minus  = "abcdefghijkmnpqrstuvwxyz"      # sin l ni o
+    $nums   = "23456789"                      # sin 0 ni 1
+    $clave = -join (
+        (1..4 | ForEach-Object { $letras[(Get-Random -Maximum $letras.Length)] }) +
+        (1..4 | ForEach-Object { $minus[(Get-Random -Maximum $minus.Length)] }) +
+        (1..4 | ForEach-Object { $nums[(Get-Random -Maximum $nums.Length)] })
+    )
+    Poner-Clave "ADMIN_INICIAL_PASSWORD" $clave -NoMostrar
+
+    $origenes = @("http://localhost:$PUERTO_BACKEND", "capacitor://localhost", "http://localhost")
+    if ($ipLocal) { $origenes += "http://${ipLocal}:$PUERTO_BACKEND" }
+    Poner-Clave "CORS_ALLOWED_ORIGINS" ($origenes -join ",")
+
+    if (-not $claves.Contains("MAIL_USERNAME") -or -not $claves["MAIL_USERNAME"] -or
+        $claves["MAIL_USERNAME"] -match "^tu_correo_real") {
+        $claves["MAIL_USERNAME"] = "correo_de_la_residencia@gmail.com"
+        $claves["MAIL_PASSWORD"] = "clave_de_aplicacion_de_16_digitos"
+        Pendiente "Poner el correo real y su clave de aplicacion en MAIL_USERNAME / MAIL_PASSWORD del .env (se usa para enviar contraseñas temporales)"
+    }
+
+    # Se respalda el .env anterior antes de reescribirlo.
+    if (Test-Path $archivoEnv) {
+        $copia = Join-Path $carpetaLogs ("env-anterior-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".txt")
+        Copy-Item $archivoEnv $copia -Force
+        Info "Copia del .env anterior en logs\$(Split-Path $copia -Leaf)"
+    }
+
+    $texto = @("# Generado por instalar.ps1 el $(Get-Date -Format 'yyyy-MM-dd HH:mm')",
+               "# No compartas este archivo: contiene contraseñas.", "")
+    foreach ($k in $claves.Keys) { $texto += "$k=$($claves[$k])" }
+    Set-Content -Path $archivoEnv -Value $texto -Encoding UTF8
+    Ok ".env escrito con $($claves.Count) valores."
+    Marcar-Hecho "env"
+
+    # El perfil 'prod' que viaja dentro del JAR trae ddl-auto=validate, es decir
+    # exige que las tablas YA existan. En una instalacion nueva la base esta
+    # vacia y el backend no arranca. Este archivo, al estar junto al JAR, tiene
+    # prioridad sobre el de dentro y deja que Hibernate cree el esquema.
+    $propsProd = Join-Path $Carpeta "application-prod.properties"
+    if (Test-Path $propsProd) {
+        Saltado "application-prod.properties ya existe (no se toca)."
+    } else {
+        $lineasProd = @(
+            "# Generado por instalar.ps1: ajustes del perfil 'prod' para ESTA instalacion.",
+            "# Tiene prioridad sobre el application-prod.properties incluido en el JAR.",
+            "",
+            "spring.datasource.url=`${DB_URL}",
+            "spring.datasource.username=`${DB_USERNAME}",
+            "spring.datasource.password=`${DB_PASSWORD}",
+            "spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver",
+            "",
+            "# 'update' y no 'validate': en una instalacion nueva las tablas no",
+            "# existen todavia y hay que dejar que Hibernate las cree.",
+            "spring.jpa.generate-ddl=true",
+            "spring.jpa.hibernate.ddl-auto=update",
+            "spring.jpa.show-sql=false"
+        )
+        Set-Content -Path $propsProd -Value $lineasProd -Encoding UTF8
+        Ok "application-prod.properties escrito (permite crear el esquema)."
+    }
+} else {
+    if (Test-Path $archivoEnv) {
+        Ok ".env presente."
+
+        # Comprobar la contraseña aqui es lo mas util del modo revision: es la
+        # causa habitual de que el sistema arranque pero no guarde nada.
+        if ($mysqlOk -and $claves.Contains("DB_PASSWORD") -and $claves["DB_PASSWORD"]) {
+            $p = Ejecutar-Nativo $mysqlExe @("-uroot", "-p$($claves['DB_PASSWORD'])", "-e", "SELECT 1;")
+            if ($p.Codigo -eq 0) { Ok "La contraseña de MySQL del .env funciona." }
+            else { Pendiente "La contraseña de MySQL del .env ya no funciona: el sistema no podra guardar datos." }
+        }
+
+        foreach ($obligatoria in @("DB_URL", "JWT_SECRET", "APP_STORAGE_PATH")) {
+            if (-not $claves.Contains($obligatoria) -or -not $claves[$obligatoria]) {
+                Pendiente "Falta $obligatoria en el .env (ejecuta el instalador para completarlo)."
+            }
+        }
+    } else {
+        Pendiente "Falta el archivo .env"
+    }
+}
+
+# --- Ruta de mysqldump en application.properties (respaldos) ---
+if ($mysqldumpExe -and -not $SoloVerificar) {
+    $props = Join-Path $Carpeta "application.properties"
+    $rutaDump = $mysqldumpExe.Replace("\", "/")
+    if (Test-Path $props) {
+        $contenido = Get-Content $props -Raw
+        if ($contenido -match "app\.backup\.mysqldump=") {
+            Saltado "application.properties ya define la ruta de mysqldump."
+        } else {
+            Add-Content -Path $props -Value "`napp.backup.mysqldump=$rutaDump"
+            Ok "Ruta de mysqldump añadida a application.properties."
+        }
+    }
+}
+
+# ===========================================================================
+#  PASO 5 - Base de datos
+# ===========================================================================
+Mostrar-Paso 5 $TOTAL "Base de datos"
+
+$passBd = $claves["DB_PASSWORD"]
+
+if (-not $mysqlOk) {
+    Pendiente "No se pudo preparar la base de datos: falta MySQL."
+} elseif ($SoloVerificar) {
+    $existe = (Ejecutar-Nativo $mysqlExe @("-uroot", "-p$passBd", "-N", "-e", "SHOW DATABASES LIKE '$NOMBRE_BD';")).Texto
+    if ($existe -match $NOMBRE_BD) { Ok "La base de datos '$NOMBRE_BD' existe." }
+    else { Pendiente "Falta crear la base de datos '$NOMBRE_BD'." }
+} else {
+    # El servicio de MySQL debe arrancar solo con la PC.
+    $servicio = Get-Service -Name "MySQL*" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($servicio) {
+        if ($servicio.StartType -ne "Automatic") {
+            Set-Service -Name $servicio.Name -StartupType Automatic
+            Ok "Servicio $($servicio.Name) puesto en inicio automatico."
+        } else { Saltado "El servicio $($servicio.Name) ya arranca solo." }
+        if ($servicio.Status -ne "Running") {
+            Start-Service -Name $servicio.Name
+            Ok "Servicio $($servicio.Name) iniciado."
+        }
+    } else { Aviso "No se encontro el servicio de MySQL; revisa services.msc." }
+
+    $crear = {
+        $sql = "CREATE DATABASE IF NOT EXISTS $NOMBRE_BD CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+        $r = Ejecutar-Nativo $mysqlExe @("-uroot", "-p$passBd", "-e", $sql)
+        if ($r.Codigo -ne 0) { throw $r.Texto }
+    }
+    if (Reintentar -Accion $crear -Descripcion "creacion de la base de datos" -Intentos 3 -EsperaBase 4) {
+        Ok "Base de datos '$NOMBRE_BD' lista."
+        Marcar-Hecho "bd"
+    } else {
+        Fallo "No se pudo crear la base de datos." "Comprueba que MySQL este encendido y que la contraseña del .env sea correcta."
+    }
+
+    # Restauracion de respaldo: solo si se pidio y la base esta vacia.
+    if ($RestaurarRespaldo) {
+        if (-not (Test-Path $RestaurarRespaldo)) {
+            Aviso "No se encontro el respaldo '$RestaurarRespaldo'."
+        } else {
+            $consulta = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$NOMBRE_BD';"
+            $tablas = (Ejecutar-Nativo $mysqlExe @("-uroot", "-p$passBd", "-N", "-e", $consulta)).Texto
+            $cuantasTablas = 0
+            [void][int]::TryParse(($tablas -split "`n")[0].Trim(), [ref]$cuantasTablas)
+            if ($cuantasTablas -gt 0) {
+                Aviso "La base de datos YA TIENE datos ($cuantasTablas tablas): no se restaura el respaldo, para no perder nada."
+            } else {
+                Info "Restaurando respaldo (puede tardar)..."
+                $restaurar = {
+                    $ruta = (Resolve-Path $RestaurarRespaldo).Path
+                    $r = Ejecutar-Nativo "cmd" @("/c", "`"$mysqlExe`" -uroot -p$passBd $NOMBRE_BD < `"$ruta`"")
+                    if ($r.Codigo -ne 0) { throw "mysql devolvio $($r.Codigo): $($r.Texto)" }
+                }
+                if (Reintentar -Accion $restaurar -Descripcion "restauracion del respaldo" -Intentos 2) {
+                    Ok "Respaldo restaurado."
+                } else { Fallo "No se pudo restaurar el respaldo." "Puedes hacerlo a mano segun DESPLIEGUE.md paso 5." }
+            }
+        }
+    }
+}
+
+# ===========================================================================
+#  PASO 6 - Entorno de Python (el paso mas largo)
+# ===========================================================================
+Mostrar-Paso 6 $TOTAL "Entorno de Python para el reconocimiento facial"
+
+$carpetaPy = Join-Path $Carpeta "python_scripts"
+$venv      = Join-Path $carpetaPy "venv_perfecto"
+$venvPy    = Join-Path $venv "Scripts\python.exe"
+$requisitos = Join-Path $carpetaPy "requirements.txt"
+
+if (-not (Test-Path $requisitos)) {
+    Pendiente "Falta python_scripts\requirements.txt: no se puede preparar el entorno."
+} elseif ($SoloVerificar) {
+    if (Test-Path $venvPy) {
+        $prueba = (Ejecutar-Nativo $venvPy @("-c", "import torch, tensorflow, deepface, flask, cv2; print('IMPORTS_OK')")).Texto
+        if ($prueba -match "IMPORTS_OK") { Ok "Entorno de Python completo y funcional." }
+        else { Pendiente "El entorno de Python existe pero le faltan dependencias." }
+    } else { Pendiente "Falta crear el entorno de Python (venv_perfecto)." }
+} else {
+    # 6.1 Crear el entorno virtual si no existe o si esta roto.
+    $venvValido = (Test-Path $venvPy)
+    if ($venvValido) {
+        $sano = Ejecutar-Nativo $venvPy @("-c", "print(1)")
+        if ($sano.Codigo -ne 0) { $venvValido = $false }
+        if (-not $venvValido) {
+            Aviso "El entorno de Python existente esta roto: se recreara."
+            Remove-Item $venv -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    if ($venvValido) {
+        Saltado "Entorno virtual ya creado."
+    } else {
+        Info "Creando el entorno virtual..."
+        $argsVenv = $pythonArgs + @("-m", "venv", $venv)
+        $rVenv = Ejecutar-Nativo $pythonExe $argsVenv
+        if ($rVenv.Codigo -ne 0) { Escribir-Log $rVenv.Texto "ERROR" }
+        if (-not (Test-Path $venvPy)) {
+            Fallo "No se pudo crear el entorno virtual de Python." "Comprueba que Python 3.12 este bien instalado."
+            exit 1
+        }
+        Ok "Entorno virtual creado."
+    }
+
+    # 6.2 Instalar dependencias EN FASES.
+    #     Asi se ve el progreso y, si algo falla, al reejecutar solo se repite
+    #     la fase que quedo pendiente. La cache de pip evita volver a descargar.
+    if (-not (Test-Path $cachePip)) { New-Item -ItemType Directory -Path $cachePip -Force | Out-Null }
+
+    $comunes = @("--cache-dir", $cachePip, "--retries", "10", "--timeout", "120",
+                 "--disable-pip-version-check")
+
+    # Si el instalador vino con los paquetes incluidos, se instala SIN INTERNET
+    # desde esa carpeta. Es lo que hace la opcion -SinInternet al construir el .exe.
+    $paquetesLocales = Join-Path $Carpeta "paquetes-python"
+    $sinRed = (Test-Path $paquetesLocales) -and
+              ((Get-ChildItem $paquetesLocales -File -ErrorAction SilentlyContinue).Count -gt 0)
+
+    $listaRequisitos = $requisitos
+    if ($sinRed) {
+        $cuantos = (Get-ChildItem $paquetesLocales -File).Count
+        Ok "Se encontraron $cuantos paquetes incluidos: se instalara sin Internet."
+        $origen = @("--no-index", "--find-links", $paquetesLocales)
+
+        # requirements.txt declara el indice de PyTorch, que choca con --no-index.
+        # Se usa una copia sin esa linea para que pip no intente salir a la red.
+        $listaRequisitos = Join-Path $carpetaLogs "requisitos-sin-indice.txt"
+        Get-Content $requisitos |
+            Where-Object { $_ -notmatch '^\s*--(extra-)?index-url' } |
+            Set-Content -Path $listaRequisitos -Encoding ASCII
+        Info "Lista de dependencias adaptada para instalacion sin red."
+    } else {
+        $origen = @("--extra-index-url", $INDICE_TORCH)
+    }
+
+    $fases = @(
+        @{ Clave = "pip-herramientas"; Nombre = "Herramientas de instalacion";
+           Args = @("install") + $comunes + $origen + @("--upgrade", "pip", "setuptools", "wheel") },
+        @{ Clave = "pip-torch";        Nombre = "PyTorch para CPU (~250 MB)";
+           Args = @("install") + $comunes + $origen + @("torch==2.12.0+cpu", "torchvision==0.27.0+cpu") },
+        @{ Clave = "pip-tensorflow";   Nombre = "TensorFlow (~600 MB)";
+           Args = @("install") + $comunes + $origen + @("tensorflow==2.21.0", "tf_keras==2.21.0") },
+        @{ Clave = "pip-resto";        Nombre = "Resto de dependencias";
+           Args = @("install") + $comunes + $origen + @("-r", $listaRequisitos) }
+    )
+
+    $todoBien = $true
+    foreach ($fase in $fases) {
+        if (Esta-Hecho $fase.Clave) {
+            Saltado "$($fase.Nombre)"
+            continue
+        }
+        Write-Host ""
+        Info "$($fase.Nombre) ..."
+        $desde = Get-Date
+        $argumentosPip = $fase.Args
+        $instalar = {
+            # Se muestra en vivo (no con Ejecutar-Nativo) para que se vea avanzar.
+            & $venvPy -m pip @argumentosPip 2>&1 | ForEach-Object {
+                if ($_ -is [System.Management.Automation.ErrorRecord]) { $l = $_.Exception.Message }
+                else { $l = $_.ToString() }
+                Escribir-Log $l "PIP"
+                # Solo se muestran las lineas utiles, para no inundar la consola.
+                if ($l -match "^(Collecting|Downloading|Installing|Successfully|Using cached|ERROR|WARNING)") {
+                    Write-Host "        $l" -ForegroundColor DarkGray
+                }
+            }
+            if ($LASTEXITCODE -ne 0) { throw "pip devolvio el codigo $LASTEXITCODE" }
+        }
+        if (Reintentar -Accion $instalar -Descripcion $fase.Nombre -Intentos 4 -EsperaBase 8) {
+            $mins = [Math]::Round(((Get-Date) - $desde).TotalMinutes, 1)
+            Ok "$($fase.Nombre) - listo en $mins min."
+            Marcar-Hecho $fase.Clave
+        } else {
+            Fallo "No se pudo completar: $($fase.Nombre)" `
+                  "Vuelve a ejecutar el instalador cuando tengas mejor conexion: continuara desde aqui, lo ya descargado se reutiliza."
+            $todoBien = $false
+            break
+        }
+    }
+
+    # 6.3 Comprobar de verdad que el entorno sirve.
+    if ($todoBien) {
+        $prueba = (Ejecutar-Nativo $venvPy @("-c", "import torch, tensorflow, deepface, flask, cv2; print('IMPORTS_OK')")).Texto
+        if ($prueba -match "IMPORTS_OK") {
+            Ok "Todas las librerias cargan correctamente."
+            Marcar-Hecho "python-verificado"
+        } else {
+            Fallo "Las librerias no cargan bien." "Detalle en logs\instalacion.log"
+            Escribir-Log $prueba "ERROR"
+        }
+    }
+}
+
+# ===========================================================================
+#  PASO 7 - Modelos de reconocimiento facial
+# ===========================================================================
+Mostrar-Paso 7 $TOTAL "Modelos de reconocimiento facial"
+
+# Los modelos viven dentro de la instalacion (ver DEEPFACE_HOME en el paso 4).
+$pesosDestino = Join-Path $carpetaPy ".deepface\weights"
+
+if ($SoloVerificar -or -not (Test-Path $venvPy)) {
+    if (Test-Path $pesosDestino) {
+        $n = (Get-ChildItem $pesosDestino -File -Filter "*.*" -ErrorAction SilentlyContinue |
+              Where-Object { $_.Extension -ne ".part" }).Count
+        Ok "Hay $n archivos de modelos en la instalacion."
+    } else { Pendiente "Faltan los modelos de reconocimiento facial." }
+} elseif (Esta-Hecho "modelos") {
+    Saltado "Modelos ya preparados."
+} else {
+    $env:DEEPFACE_HOME = $carpetaPy
+
+    # Se limpian descargas a medias de intentos anteriores: un .part corrupto
+    # hace fallar la carga del modelo una y otra vez.
+    if (Test-Path $pesosDestino) {
+        $aMedias = Get-ChildItem $pesosDestino -File -Filter "*.part" -ErrorAction SilentlyContinue
+        foreach ($p in $aMedias) {
+            Remove-Item $p.FullName -Force -ErrorAction SilentlyContinue
+            Info "Descartada una descarga a medias: $($p.Name)"
+        }
+    }
+
+    # Si esta PC ya tenia los modelos en la carpeta del usuario, se copian:
+    # es cuestion de segundos frente a volver a descargar 260 MB.
+    $pesosUsuario = Join-Path $env:USERPROFILE ".deepface\weights"
+    if ((Test-Path $pesosUsuario) -and -not (Test-Path $pesosDestino)) {
+        try {
+            New-Item -ItemType Directory -Path $pesosDestino -Force | Out-Null
+            Get-ChildItem $pesosUsuario -File | Where-Object { $_.Extension -ne ".part" } |
+                Copy-Item -Destination $pesosDestino -Force
+            $n = (Get-ChildItem $pesosDestino -File).Count
+            Ok "Reutilizados $n modelos que ya estaban en esta PC (sin descargar nada)."
+        } catch {
+            Aviso "No se pudieron copiar los modelos existentes: se descargaran."
+        }
+    }
+
+    Info "Comprobando los modelos (ArcFace, detector y anti-suplantacion)."
+    Info "Si hay que descargarlos son unos 260 MB, y solo ocurre una vez."
+    $codigoModelos = @(
+        "import os",
+        "os.environ['TF_CPP_MIN_LOG_LEVEL']='3'",
+        "os.environ['TF_USE_LEGACY_KERAS']='1'",
+        "from deepface import DeepFace",
+        "DeepFace.build_model('ArcFace')",
+        "print('MODELOS_OK')"
+    ) -join "; "
+
+    $descargarModelos = {
+        $r = (Ejecutar-Nativo $venvPy @("-c", $codigoModelos)).Texto
+        Escribir-Log $r "MODELOS"
+        if ($r -notmatch "MODELOS_OK") { throw "no se completo la preparacion de los modelos" }
+    }
+    $modelosListos = Reintentar -Accion $descargarModelos -Descripcion "preparacion de modelos" -Intentos 2 -EsperaBase 10
+
+    # PLAN B: bajar los modelos con Windows en vez de con Python.
+    # Python valida los certificados con su propio paquete de CA; en redes que
+    # inspeccionan el trafico (universidades, empresas) eso falla. Windows usa
+    # su almacen de certificados, que si suele tener la CA de la institucion.
+    if (-not $modelosListos) {
+        Aviso "Python no pudo descargar los modelos. Se intentara con Windows."
+        if (-not (Test-Path $pesosDestino)) { New-Item -ItemType Directory -Path $pesosDestino -Force | Out-Null }
+
+        $modelos = @(
+            @{ Nombre = "arcface_weights.h5";                    Url = "https://github.com/serengil/deepface_models/releases/download/v1.0/arcface_weights.h5" },
+            @{ Nombre = "deploy.prototxt";                       Url = "https://github.com/opencv/opencv/raw/3.4.0/samples/dnn/face_detector/deploy.prototxt" },
+            @{ Nombre = "res10_300x300_ssd_iter_140000.caffemodel"; Url = "https://github.com/opencv/opencv_3rdparty/raw/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel" },
+            @{ Nombre = "2.7_80x80_MiniFASNetV2.pth";            Url = "https://github.com/minivision-ai/Silent-Face-Anti-Spoofing/raw/master/resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth" },
+            @{ Nombre = "4_0_0_80x80_MiniFASNetV1SE.pth";        Url = "https://github.com/minivision-ai/Silent-Face-Anti-Spoofing/raw/master/resources/anti_spoof_models/4_0_0_80x80_MiniFASNetV1SE.pth" }
+        )
+
+        $faltaAlguno = $false
+        foreach ($m in $modelos) {
+            $ruta = Join-Path $pesosDestino $m.Nombre
+            if (Test-Path $ruta) { Saltado $m.Nombre; continue }
+            Info "Descargando $($m.Nombre)..."
+            if (Descargar-Archivo $m.Url $ruta $m.Nombre) { Ok $m.Nombre }
+            else { $faltaAlguno = $true; Aviso "No se pudo bajar $($m.Nombre)." }
+        }
+
+        if (-not $faltaAlguno) {
+            # Se comprueba que DeepFace realmente los cargue.
+            $modelosListos = Reintentar -Accion $descargarModelos -Descripcion "comprobacion de modelos" -Intentos 1
+        }
+    }
+
+    if ($modelosListos) {
+        Ok "Modelos listos en python_scripts\.deepface\weights\"
+        Marcar-Hecho "modelos"
+    } else {
+        Aviso "Los modelos no quedaron listos. Se descargaran solos en el primer reconocimiento (esa primera marca tardara mas)."
+        Aviso "Si la red bloquea la descarga, copialos a mano en: $pesosDestino"
+    }
+}
+
+# ===========================================================================
+#  PASO 8 - Red Wi-Fi de la residencia
+# ===========================================================================
+Mostrar-Paso 8 $TOTAL "Red Wi-Fi de la residencia (SSID / BSSID)"
+
+# Sin estos datos NINGUN residente puede marcar asistencia, asi que se intenta
+# leerlos y se avisa con claridad si no se puede.
+$ssid = $null; $bssid = $null
+try {
+    $wlan = (Ejecutar-Nativo "netsh" @("wlan", "show", "interfaces")).Texto
+    if ($wlan -match "permiso de ubicaci|location permission") {
+        Aviso "Windows no deja leer la red Wi-Fi: falta el permiso de ubicacion."
+        Write-Host "              Activalo en Configuracion -> Privacidad y seguridad -> Ubicacion" -ForegroundColor Yellow
+        Write-Host "              (atajo: ms-settings:privacy-location) y vuelve a ejecutar." -ForegroundColor Yellow
+    } else {
+        foreach ($linea in ($wlan -split "`r?`n")) {
+            if ($linea -match "^\s*BSSID\s*:\s*(.+)$")      { $bssid = $Matches[1].Trim() }
+            elseif ($linea -match "^\s*SSID\s*:\s*(.+)$")    { $ssid  = $Matches[1].Trim() }
+        }
+    }
+} catch { Aviso "No se pudo consultar la red Wi-Fi: $($_.Exception.Message)" }
+
+if ($ssid -or $bssid) {
+    Ok "Red detectada - SSID: $ssid   BSSID: $bssid"
+    if (-not $SoloVerificar -and $mysqlOk) {
+        $filas = (Ejecutar-Nativo $mysqlExe @("-uroot", "-p$passBd", "-N", "-e", "SELECT COUNT(*) FROM $NOMBRE_BD.tresidence;")).Texto
+        $cuantas = 0
+        [void][int]::TryParse((($filas -split "`n")[0]).Trim(), [ref]$cuantas)
+        if ($cuantas -gt 0) {
+            $sql = "UPDATE $NOMBRE_BD.tresidence SET wifiSsid='$ssid', wifiBssid='$bssid';"
+            $r = Ejecutar-Nativo $mysqlExe @("-uroot", "-p$passBd", "-e", $sql)
+            if ($r.Codigo -eq 0) { Ok "Red guardada en la base de datos." }
+            else { Pendiente "Guardar el SSID/BSSID a mano (DESPLIEGUE.md paso 5.1)." }
+        } else {
+            # La residencia la crea el sistema en su primer arranque. Si aun no
+            # ha arrancado, no existe todavia: se guardan los datos para aplicarlos
+            # despues, en la siguiente pasada del instalador.
+            Info "La residencia aun no existe: se crea en el primer arranque del sistema."
+            $datos = "SSID=$ssid`r`nBSSID=$bssid`r`n"
+            Set-Content -Path (Join-Path $carpetaLogs "red-wifi-detectada.txt") -Value $datos -Encoding UTF8
+            Pendiente "Vuelve a ejecutar el instalador cuando el sistema haya arrancado, y guardara la red (SSID='$ssid')"
+            Info "Datos guardados en logs\red-wifi-detectada.txt"
+        }
+    }
+} else {
+    Pendiente "Registrar el SSID/BSSID de la residencia (DESPLIEGUE.md paso 5.1). Sin esto nadie podra marcar asistencia."
+}
+
+# ===========================================================================
+#  PASO 9 - Arranque automatico y verificacion final
+# ===========================================================================
+Mostrar-Paso 9 $TOTAL "Arranque automatico y verificacion"
+
+$lanzador = Join-Path $Carpeta "iniciar-casa-ketteler.bat"
+
+if ($SoloVerificar) {
+    $tarea = Get-ScheduledTask -TaskName $TAREA_PROGRAMADA -ErrorAction SilentlyContinue
+    if ($tarea) { Ok "La tarea de arranque automatico existe." }
+    else { Pendiente "Falta la tarea de arranque automatico." }
+
+    # El firewall es la causa mas habitual de "funciona aqui pero no en el celular".
+    if (Existe-Regla-Firewall "Casa Ketteler (puerto $PUERTO_BACKEND)") {
+        Ok "El firewall tiene la regla para el puerto $PUERTO_BACKEND."
+    } else {
+        Aviso "No esta la regla de firewall de Casa Ketteler para el puerto $PUERTO_BACKEND."
+        Write-Host "              Puede que otra regla ya lo permita. Al instalar se creara la propia." -ForegroundColor Yellow
+    }
+
+    $publicas = Get-NetConnectionProfile -ErrorAction SilentlyContinue |
+                Where-Object { $_.NetworkCategory -eq 'Public' }
+    if ($publicas) {
+        Aviso "Windows considera PUBLICA la red: $(($publicas | ForEach-Object { $_.Name }) -join ', ')"
+    }
+} elseif (-not (Test-Path $lanzador)) {
+    Pendiente "Falta iniciar-casa-ketteler.bat: no se puede registrar el arranque automatico."
+} else {
+    $registrar = {
+        $accion   = New-ScheduledTaskAction -Execute $lanzador -WorkingDirectory $Carpeta
+        $disparo  = New-ScheduledTaskTrigger -AtStartup
+        $ajustes  = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+                        -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        $permisos = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+        Register-ScheduledTask -TaskName $TAREA_PROGRAMADA -Action $accion -Trigger $disparo `
+            -Settings $ajustes -Principal $permisos -Force -ErrorAction Stop | Out-Null
+    }
+    if (Reintentar -Accion $registrar -Descripcion "registro de la tarea programada" -Intentos 2) {
+        Ok "Arranque automatico registrado (tarea '$TAREA_PROGRAMADA')."
+        Marcar-Hecho "tarea"
+    } else {
+        Pendiente "Registrar el arranque automatico a mano (DESPLIEGUE.md paso 8)."
+    }
+
+    # --- Permiso del firewall para que los celulares alcancen el servidor ---
+    #
+    # Sin esta regla el sistema funciona en esta computadora pero NO desde los
+    # celulares: Windows bloquea las conexiones entrantes al puerto 8001. Windows
+    # suele preguntar la primera vez, pero aqui nunca lo hace, porque el sistema
+    # arranca como SYSTEM desde la tarea programada, sin nadie que responda el aviso.
+    # El resultado seria "la app no conecta" sin ninguna causa aparente.
+    $reglaFw = "Casa Ketteler (puerto $PUERTO_BACKEND)"
+    if (Existe-Regla-Firewall $reglaFw) {
+        Saltado "La regla de firewall para el puerto $PUERTO_BACKEND ya existe."
+    } else {
+        try {
+            New-NetFirewallRule -DisplayName $reglaFw `
+                -Description "Permite que los celulares de los residentes lleguen al sistema." `
+                -Direction Inbound -Protocol TCP -LocalPort $PUERTO_BACKEND `
+                -Action Allow -Profile Private,Domain -ErrorAction Stop | Out-Null
+            Ok "Firewall: permitido el puerto $PUERTO_BACKEND para la red local."
+        } catch {
+            Pendiente "Permitir el puerto $PUERTO_BACKEND en el Firewall de Windows; sin eso los celulares no conectan."
+            Escribir-Log "Fallo al crear la regla de firewall: $($_.Exception.Message)" "AVISO"
+        }
+    }
+
+    # La regla anterior cubre las redes Privada y de Dominio. Si Windows tiene
+    # catalogada la red de la residencia como Publica, seguira bloqueando.
+    try {
+        $publicas = Get-NetConnectionProfile -ErrorAction SilentlyContinue |
+                    Where-Object { $_.NetworkCategory -eq 'Public' }
+        if ($publicas) {
+            $nombres = ($publicas | ForEach-Object { $_.Name }) -join ', '
+            Aviso "Windows considera PUBLICA la red: $nombres"
+            Write-Host "              Mientras siga asi, los celulares no podran conectarse." -ForegroundColor Yellow
+            Write-Host "              Cambiala a Privada en Configuracion -> Red e Internet," -ForegroundColor Yellow
+            Write-Host "              o ejecuta:  Set-NetConnectionProfile -Name '$($publicas[0].Name)' -NetworkCategory Private" -ForegroundColor Yellow
+        }
+    } catch { }
+
+    # --- Verificacion real: arrancar y comprobar que responde ---
+    if ($jar -and (Test-Path $venvPy) -and $script:Pendientes.Count -eq 0) {
+        Write-Host ""
+        Info "Arrancando el sistema para comprobarlo..."
+        Start-Process -FilePath $lanzador -WorkingDirectory $Carpeta -WindowStyle Minimized
+        Write-Host "      Esperando a que responda (hasta 90 s; el reconocimiento tarda en cargar)..." -ForegroundColor Gray
+
+        $backendOk = $false; $pythonListo = $false
+        for ($s = 0; $s -lt 90; $s += 3) {
+            Start-Sleep -Seconds 3
+            if (-not $backendOk -and (Probar-Puerto $PUERTO_BACKEND)) { $backendOk = $true; Ok "Backend escuchando en el puerto $PUERTO_BACKEND." }
+            if (-not $pythonListo -and (Probar-Puerto $PUERTO_PYTHON)) { $pythonListo = $true; Ok "Reconocimiento facial escuchando en el puerto $PUERTO_PYTHON." }
+            if ($backendOk -and $pythonListo) { break }
+        }
+
+        if ($backendOk) {
+            # 1) Desde la propia computadora.
+            try {
+                $r = Invoke-WebRequest -Uri "http://localhost:$PUERTO_BACKEND/casaketteler/attendance/health" `
+                        -UseBasicParsing -TimeoutSec 15
+                if ($r.StatusCode -eq 200) { Ok "El sistema responde en esta computadora." }
+            } catch {
+                Aviso "El puerto esta abierto pero la comprobacion de salud fallo: $($_.Exception.Message)"
+            }
+
+            # 2) Desde la RED, que es lo que de verdad importa: si esto falla, la
+            #    computadora se ve a si misma pero ningun celular llega. Probar solo
+            #    localhost da un falso aprobado, porque localhost nunca pasa por el
+            #    firewall.
+            if ($ipLocal) {
+                try {
+                    $r2 = Invoke-WebRequest -Uri "http://${ipLocal}:$PUERTO_BACKEND/casaketteler/attendance/health" `
+                            -UseBasicParsing -TimeoutSec 15
+                    if ($r2.StatusCode -eq 200) {
+                        Ok "El sistema responde desde la red (http://${ipLocal}:$PUERTO_BACKEND)."
+                        Ok "Los celulares de los residentes podran conectarse."
+                    }
+                } catch {
+                    Pendiente "El sistema no responde desde la red: los celulares no podran conectarse."
+                    Write-Host "              Revisa el Firewall de Windows y que la red sea Privada." -ForegroundColor Yellow
+                    Escribir-Log "Prueba de red fallida: $($_.Exception.Message)" "AVISO"
+                }
+            }
+        } else {
+            Fallo "El backend no arranco." "Revisa logs\backend.error.log"
+        }
+
+        # 3) El reconocimiento facial: que el puerto este abierto no basta, el
+        #    servicio puede estar levantado y con los modelos rotos.
+        if ($pythonListo) {
+            try {
+                $r3 = Invoke-WebRequest -Uri "http://localhost:$PUERTO_PYTHON/health" `
+                        -UseBasicParsing -TimeoutSec 20
+                if ($r3.Content -match '"?status"?\s*:\s*"?ok') {
+                    Ok "El reconocimiento facial responde correctamente."
+                } else {
+                    Aviso "El reconocimiento facial responde, pero no confirma estar listo."
+                }
+            } catch {
+                Aviso "El reconocimiento facial escucha pero no responde: $($_.Exception.Message)"
+                Write-Host "              Revisa logs\reconocimiento.error.log" -ForegroundColor Yellow
+            }
+        } else {
+            Aviso "El reconocimiento facial no arranco todavia. Revisa logs\reconocimiento.error.log"
+        }
+    } else {
+        Info "Se omite la prueba de arranque porque quedan cosas pendientes."
+    }
+}
+
+# ===========================================================================
+#  Resumen
+# ===========================================================================
+$duracion = [Math]::Round(((Get-Date) - $inicio).TotalMinutes, 1)
+
+Write-Host ""
+Write-Host "  ==================================================================" -ForegroundColor Cyan
+Write-Host "     RESUMEN" -ForegroundColor Cyan
+Write-Host "  ==================================================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "     Duracion: $duracion minutos" -ForegroundColor Gray
+Write-Host "     Registro: $archivoLog" -ForegroundColor Gray
+
+if ($script:Advertencias.Count -gt 0) {
+    Write-Host ""
+    Write-Host "     Avisos:" -ForegroundColor Yellow
+    foreach ($a in $script:Advertencias) { Write-Host "       - $a" -ForegroundColor Yellow }
+}
+
+if ($script:Pendientes.Count -gt 0) {
+    Write-Host ""
+    Write-Host "     FALTA HACER:" -ForegroundColor Magenta
+    foreach ($p in $script:Pendientes) { Write-Host "       - $p" -ForegroundColor Magenta }
+    Write-Host ""
+    Write-Host "     Resuelve lo de arriba y vuelve a ejecutar el instalador:" -ForegroundColor White
+    Write-Host "     continuara donde quedo, sin repetir las descargas." -ForegroundColor White
+} else {
+    Write-Host ""
+    Write-Host "     Instalacion completa." -ForegroundColor Green
+    Write-Host ""
+    Write-Host "     Entrar al sistema:  http://localhost:$PUERTO_BACKEND" -ForegroundColor White
+    if ($ipLocal) {
+        Write-Host "     Desde otra PC:      http://${ipLocal}:$PUERTO_BACKEND" -ForegroundColor White
+    }
+    Write-Host "     Encender / apagar:  iniciar-casa-ketteler.bat / detener-casa-ketteler.bat" -ForegroundColor White
+
+    # Las credenciales, bien visibles: sin ellas no se puede hacer nada.
+    if ($claves -and $claves["ADMIN_INICIAL_EMAIL"]) {
+        Write-Host ""
+        Write-Host "     +------------------------------------------------------------+" -ForegroundColor Cyan
+        Write-Host "     |  ENTRA POR PRIMERA VEZ CON ESTOS DATOS                     |" -ForegroundColor Cyan
+        Write-Host "     +------------------------------------------------------------+" -ForegroundColor Cyan
+        Write-Host "        Usuario    : $($claves['ADMIN_INICIAL_EMAIL'])" -ForegroundColor White
+        Write-Host "        Contrasena : $($claves['ADMIN_INICIAL_PASSWORD'])" -ForegroundColor White
+        Write-Host ""
+        Write-Host "        CAMBIALA al entrar. Tambien quedan en logs\instalacion-resumen.txt" -ForegroundColor Yellow
+    }
+    Write-Host ""
+    Write-Host "     Reinicia la PC para comprobar que el sistema vuelve solo." -ForegroundColor Yellow
+}
+
+Write-Host ""
+Escribir-Log "########## Fin ($duracion min). Pendientes: $($script:Pendientes.Count). Avisos: $($script:Advertencias.Count) ##########"
+
+# ---------------------------------------------------------------------------
+#  Resumen en archivo: constancia de como quedo el equipo. Sirve para adjuntar
+#  al informe y para que quien de soporte sepa que hay instalado sin tener que
+#  ir mirando carpeta por carpeta.
+# ---------------------------------------------------------------------------
+try {
+    if ($script:Pendientes.Count -gt 0) { $estadoFinal = "INCOMPLETA - quedan $($script:Pendientes.Count) puntos pendientes" }
+    else { $estadoFinal = "COMPLETA" }
+
+    $resumen = @(
+        "CASA KETTELER - Resumen de la instalacion",
+        "=========================================",
+        "",
+        "Fecha        : $(Get-Date -Format 'dd/MM/yyyy HH:mm')",
+        "Equipo       : $env:COMPUTERNAME",
+        "Usuario      : $env:USERNAME",
+        "Carpeta      : $Carpeta",
+        "Duracion     : $duracion minutos",
+        "Estado       : $estadoFinal",
+        ""
+    )
+
+    $resumen += @("PROGRAMAS DETECTADOS", "--------------------")
+    if ($javaOk) { $resumen += "  Java     : version $verJava" } else { $resumen += "  Java     : NO disponible" }
+    if ($pythonOk) { $resumen += "  Python   : $($pythonExe) $($pythonArgs -join ' ')" } else { $resumen += "  Python   : NO disponible" }
+    if ($mysqlOk) { $resumen += "  MySQL    : $mysqlExe" } else { $resumen += "  MySQL    : NO disponible" }
+    $resumen += ""
+
+    $resumen += @("ACCESO AL SISTEMA", "-----------------")
+    $resumen += "  En esta computadora : http://localhost:$PUERTO_BACKEND"
+    if ($ipLocal) { $resumen += "  Desde la red        : http://${ipLocal}:$PUERTO_BACKEND" }
+    $resumen += "  Encender / apagar   : iniciar-casa-ketteler.bat / detener-casa-ketteler.bat"
+    $resumen += ""
+
+    if ($claves -and $claves["ADMIN_INICIAL_EMAIL"]) {
+        $resumen += @(
+            "CUENTA DE ADMINISTRACION (primer ingreso)",
+            "-----------------------------------------",
+            "  Usuario    : $($claves['ADMIN_INICIAL_EMAIL'])",
+            "  Contrasena : $($claves['ADMIN_INICIAL_PASSWORD'])",
+            "",
+            "  CAMBIA ESTA CONTRASENA al entrar por primera vez.",
+            "  Esta cuenta se crea sola en el primer arranque, solo si la base de",
+            "  datos aun no tenia ningun administrador.",
+            ""
+        )
+    }
+
+    if ($script:Advertencias.Count -gt 0) {
+        $resumen += @("AVISOS", "------")
+        foreach ($a in $script:Advertencias) { $resumen += "  - $a" }
+        $resumen += ""
+    }
+
+    if ($script:Pendientes.Count -gt 0) {
+        $resumen += @("FALTA HACER", "-----------")
+        foreach ($p in $script:Pendientes) { $resumen += "  - $p" }
+        $resumen += ""
+        $resumen += "  Vuelve a ejecutar instalar.bat: continuara donde quedo."
+        $resumen += ""
+    }
+
+    $resumen += @(
+        "ARCHIVOS UTILES",
+        "---------------",
+        "  Registro detallado : logs\instalacion.log",
+        "  Avance guardado    : logs\instalacion-estado.json",
+        "  Registros del sistema: logs\backend.log y logs\reconocimiento.log",
+        "",
+        "Para revisar el estado sin cambiar nada:",
+        "  .\instalar.ps1 -SoloVerificar",
+        "",
+        "Para rehacer una parte que quedo mal, sin repetirlo todo:",
+        "  .\instalar.ps1 -Reparar python|modelos|configuracion|todo"
+    )
+
+    $archivoResumen = Join-Path $carpetaLogs "instalacion-resumen.txt"
+    Set-Content -Path $archivoResumen -Value $resumen -Encoding UTF8
+    Write-Host "     Resumen guardado en logs\instalacion-resumen.txt" -ForegroundColor Gray
+    Write-Host ""
+} catch {
+    Escribir-Log "No se pudo escribir el resumen: $($_.Exception.Message)" "AVISO"
+}
+
+if (-not $Desatendido) {
+    Write-Host "     Presiona ENTER para cerrar." -ForegroundColor DarkGray
+    Read-Host | Out-Null
+}
+
+# Codigo de salida:  0 = todo listo   2 = quedan cosas pendientes
+if ($script:Pendientes.Count -gt 0) { exit 2 } else { exit 0 }

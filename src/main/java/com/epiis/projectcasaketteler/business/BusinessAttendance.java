@@ -1,7 +1,7 @@
 package com.epiis.projectcasaketteler.business;
 
 import java.io.File;
-import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Optional;
@@ -10,15 +10,18 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.epiis.projectcasaketteler.dto.request.RequestAttendanceInsert;
-import com.epiis.projectcasaketteler.dto.request.RequestAttendanceSync;
+import com.epiis.projectcasaketteler.dto.response.ResponseAttendancePage;
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
+import com.epiis.projectcasaketteler.entity.EntityAdmin;
 import com.epiis.projectcasaketteler.entity.EntityAttendance;
 import com.epiis.projectcasaketteler.entity.EntityUser;
-import com.epiis.projectcasaketteler.helper.ObtainIpAddressHelper;
 import com.epiis.projectcasaketteler.helper.PythonFaceRecognitionHelper;
+import com.epiis.projectcasaketteler.repository.RepositoryAdmin;
 import com.epiis.projectcasaketteler.repository.RepositoryAttendance;
 import com.epiis.projectcasaketteler.repository.RepositoryUser;
 
@@ -26,51 +29,42 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 public class BusinessAttendance {
 
     @Autowired
-    RepositoryAttendance repositoryAttendance;
+    private RepositoryAttendance repositoryAttendance;
 
     @Autowired
-    RepositoryUser repositoryUser;
+    private RepositoryUser repositoryUser;
 
     @Autowired
-    PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
+    private PythonFaceRecognitionHelper pythonFaceRecognitionHelper;
 
     @Autowired
-    ObtainIpAddressHelper obtainIpAddressHelper;
+    private RepositoryAdmin repositoryAdmin;
+
+    @Value("${app.temp.path}")
+    private String tempPath;
 
     public ResponseFaceVerification insert(RequestAttendanceInsert request) {
-        File tempFile = null;
+        List<File> tempFilesRafaga = new ArrayList<>();
         ResponseFaceVerification response = new ResponseFaceVerification();
+
+        // Verificar que el servidor de reconocimiento facial esté activo
+        if (!pythonFaceRecognitionHelper.isServerRunning()) {
+            response.error();
+            response.getListMessage()
+                    .add("Error: El servicio de reconocimiento facial no está disponible. Contacte al administrador.");
+            return response;
+        }
 
         try {
             // 1. Usamos una ruta bien definida. "temp" es genial, pero asegurémonos de que
             // sea absoluta.
-            String tempDir = "temp/";
+            String tempDir = tempPath + "/";
             File directory = new File(tempDir);
             if (!directory.exists()) {
                 directory.mkdirs();
             }
 
-            String fileName = "captura_" + request.getIdUser() + ".jpg";
-            String rutaImagen = tempDir + fileName;
-            tempFile = new File(rutaImagen);
-
-            // 2. ¡LA SOLUCIÓN AQUÍ! En lugar de transferTo pasándole el File relativo
-            // directo a Tomcat,
-            // le pasamos la ruta absoluta real que Windows sí entiende al 100%.
-            request.getFile().transferTo(tempFile.getAbsoluteFile()); // <-- AGREGA .getAbsoluteFile()
-
-            ResponseFaceVerification responsetoPython = pythonFaceRecognitionHelper.verificarRostro(rutaImagen,
-                    request.getIdUser());
-
-            // RF-12: umbral de similitud ≥85%
-            if (!responsetoPython.isVerified() || responsetoPython.getSimilarity() < 85.0) {
-                responsetoPython.error();
-                responsetoPython.getListMessage().add(
-                        "Error: Rostro no reconocido. Similitud: " +
-                                String.format("%.1f", responsetoPython.getSimilarity()) + "% (mínimo 85%).");
-                return responsetoPython;
-            }
-
+            // Obtener usuario PRIMERO
             Optional<EntityUser> optionalUser = repositoryUser.findById(request.getIdUser());
             if (!optionalUser.isPresent()) {
                 response.error();
@@ -79,78 +73,138 @@ public class BusinessAttendance {
             }
             EntityUser entityUser = optionalUser.get();
 
-            String localIpHost = InetAddress.getLocalHost().getHostAddress();
-            String parentResidenceIp = entityUser.getParentResidence().getIpAddress();
-            String requestIp = obtainIpAddressHelper.getIp();
-            String userLocalAddress = entityUser.getIpAddressLocal();
-
-            System.out.println("=== DEPURACIÓN DE RED ===");
-            System.out.println("localIpHost: " + localIpHost);
-            System.out.println("parentResidenceIp: " + parentResidenceIp);
-            System.out.println("requestIp: " + requestIp);
-            System.out.println("userLocalAddress: " + userLocalAddress);
-            System.out.println("isSameNetwork (residencia): " + isSameNetwork(localIpHost, parentResidenceIp));
-            System.out.println("isSameNetwork (usuario): " + isSameNetwork(requestIp, userLocalAddress));
-            // -- FIN DEPURACIÓN --//
-
-            if (!isSameNetwork(localIpHost, parentResidenceIp)) {
+            // Guardar las N capturas de la ráfaga en temp. En lugar de transferTo
+            // pasándole el File relativo directo a Tomcat, le pasamos la ruta absoluta
+            // real que Windows sí entiende al 100%.
+            MultipartFile[] files = request.getFiles();
+            if (files == null || files.length == 0) {
                 response.error();
-                response.getListMessage().add("Error: La Dirección WIFI de la residencia es incorrecta.");
+                response.getListMessage().add("Error: No se recibió ninguna captura.");
                 return response;
             }
 
-            if (!isSameNetwork(requestIp, userLocalAddress)) {
+            List<String> rutasCapturas = new ArrayList<>();
+            for (int i = 0; i < files.length; i++) {
+                String fileName = "captura_" + request.getIdUser() + "_" + i + ".jpg";
+                File f = new File(tempDir + fileName);
+                files[i].transferTo(f.getAbsoluteFile());
+                rutasCapturas.add(f.getAbsolutePath());
+                tempFilesRafaga.add(f);
+            }
+
+            // Ahora sí, llamar a Python con la referencia cacheada
+            ResponseFaceVerification responsetoPython = pythonFaceRecognitionHelper.verificarRostro(
+                    rutasCapturas.toArray(new String[0]), request.getIdUser(), entityUser.getBestPhotoReference());
+
+            // RF-12: verificación calibrada del modelo (verified de ArcFace)
+            boolean identidadValida = responsetoPython.isVerified();
+
+            // RF-13/14: Validación de red por BSSID (preferido) o SSID (fallback)
+            String expectedBSSID = entityUser.getParentResidence().getWifiBssid();
+            String expectedSSID = entityUser.getParentResidence().getWifiSsid();
+            String providedBSSID = request.getBssid();
+            String providedSSID = request.getSsid();
+
+            boolean redValida = false;
+            boolean redConfigurada = true;
+
+            if (expectedBSSID != null && !expectedBSSID.isEmpty()) {
+                redValida = providedBSSID != null && expectedBSSID.equalsIgnoreCase(providedBSSID);
+            } else if (expectedSSID != null && !expectedSSID.isEmpty()) {
+                redValida = providedSSID != null && expectedSSID.equals(providedSSID);
+            } else {
+                redConfigurada = false;
+            }
+
+            if (!redConfigurada) {
                 response.error();
-                response.getListMessage().add("Error: Este celular no le pertenece o no está en la red correcta.");
+                response.getListMessage().add("Error: La residencia no tiene una red WiFi configurada.");
                 return response;
             }
 
-            Optional<EntityAttendance> optionalAttendance = repositoryAttendance
-                    .findTopByParentUserOrderByCreated_atDesc(entityUser);
+            // Si falla identidad o red, registrar INTENTO_FALLIDO (con anti-spam)
+            if (!identidadValida || !redValida) {
+                String motivo = !identidadValida
+                        ? "Rostro no reconocido (similitud: " + String.format("%.1f", responsetoPython.getSimilarity())
+                                + "%)"
+                        : "Red no autorizada";
 
-            // RF-10: cooldown de 5 minutos entre registros
-            if (optionalAttendance.isPresent()) {
-                EntityAttendance lastAttendance = optionalAttendance.get();
+                registrarIntentoFallido(entityUser, motivo, providedSSID, providedBSSID,
+                        responsetoPython.getSimilarity(), request.getDescription());
 
-                Date lastTime = lastAttendance.getCreated_at();
-                long diffMinutes = (new Date().getTime() - lastTime.getTime()) / (1000 * 60);
+                responsetoPython.setVerified(identidadValida);
+                responsetoPython.error();
+                responsetoPython.getListMessage().add(
+                        !identidadValida
+                                ? "Error: Rostro no reconocido. Similitud: "
+                                        + String.format("%.1f", responsetoPython.getSimilarity()) + "%."
+                                : "Error: Conéctese a la red oficial de la residencia.");
+                return responsetoPython;
+            }
 
-                if (diffMinutes < 5) {
-                    long restante = 5 - diffMinutes;
-                    responsetoPython.error();
-                    responsetoPython.getListMessage().add(
-                            "Error: Debes esperar " + restante + " minuto(s) para registrar nuevamente.");
-                    return responsetoPython;
+            responsetoPython.setVerified(true);
+
+            // RF-10: cooldown de 5 minutos entre eventos exitosos
+            Optional<EntityAttendance> optionalLast = repositoryAttendance
+                    .findTopByParentUserOrderByEventTimestampDesc(entityUser);
+
+            if (optionalLast.isPresent()) {
+                EntityAttendance last = optionalLast.get();
+                if (last.getEventType() != EntityAttendance.AttendanceEventType.INTENTO_FALLIDO) {
+                    long diffMinutes = (new Date().getTime() - last.getEventTimestamp().getTime()) / (1000 * 60);
+                    if (diffMinutes < 5) {
+                        long restante = 5 - diffMinutes;
+                        responsetoPython.error();
+                        responsetoPython.getListMessage().add(
+                                "Error: Debes esperar " + restante + " minuto(s) para registrar nuevamente.");
+                        return responsetoPython;
+                    }
                 }
             }
 
-            if (optionalAttendance.isPresent()) {
-                EntityAttendance lastAttendance = optionalAttendance.get();
+            // Determinar tipo de evento según el estado de presencia
+            boolean estabaPresente = Boolean.TRUE.equals(entityUser.getPresente());
+            EntityAttendance.AttendanceEventType tipoEvento = estabaPresente
+                    ? EntityAttendance.AttendanceEventType.SALIDA
+                    : EntityAttendance.AttendanceEventType.ENTRADA;
 
-                if (lastAttendance.getStatus()) {
-                    lastAttendance.setDepartureDate(new java.sql.Date(new Date().getTime()));
-                    lastAttendance.setStatus(false);
-                    lastAttendance.setUpdated_at(new java.sql.Date(new Date().getTime()));
-
-                    repositoryAttendance.save(lastAttendance);
-
-                    responsetoPython.success();
-                    responsetoPython.getListMessage().add("Salida registrada correctamente (Línea completada).");
-                    return responsetoPython;
+            // Detección de anomalía: dos salidas o dos entradas seguidas
+            boolean esAnomalia = false;
+            if (optionalLast.isPresent()) {
+                EntityAttendance last = optionalLast.get();
+                if (last.getEventType() == tipoEvento) {
+                    esAnomalia = true;
                 }
             }
 
-            EntityAttendance newAttendance = new EntityAttendance();
-            newAttendance.setIdAtendance(UUID.randomUUID().toString());
-            newAttendance.setParentUser(entityUser);
-            newAttendance.setEntryDate(new java.sql.Date(new Date().getTime()));
-            newAttendance.setStatus(true);
-            newAttendance.setCreated_at(new java.sql.Date(new Date().getTime()));
+            EntityAttendance evento = new EntityAttendance();
+            evento.setIdAtendance(UUID.randomUUID().toString());
+            evento.setParentUser(entityUser);
+            evento.setEventTimestamp(new Date());
+            evento.setEventType(tipoEvento);
+            evento.setEsAnomalia(esAnomalia);
+            evento.setDescription(request.getDescription());
+            evento.setSsid(providedSSID);
+            evento.setBssid(providedBSSID);
+            evento.setServerSimilarity(responsetoPython.getSimilarity());
+            evento.setCreated_at(new Date());
 
-            repositoryAttendance.save(newAttendance);
+            repositoryAttendance.save(evento);
 
+            // Actualizar el estado de presencia del residente
+            entityUser.setPresente(tipoEvento == EntityAttendance.AttendanceEventType.ENTRADA);
+            repositoryUser.save(entityUser);
+
+            responsetoPython.setEntrada(tipoEvento == EntityAttendance.AttendanceEventType.ENTRADA);
             responsetoPython.success();
-            responsetoPython.getListMessage().add("Entrada registrada correctamente (Nueva línea).");
+
+            String mensajeExito = tipoEvento == EntityAttendance.AttendanceEventType.ENTRADA
+                    ? "Entrada registrada correctamente."
+                    : "Salida registrada correctamente.";
+            if (esAnomalia) {
+                mensajeExito += " (Registro marcado como anomalía para revisión del administrador.)";
+            }
+            responsetoPython.getListMessage().add(mensajeExito);
             return responsetoPython;
 
         } catch (Exception e) {
@@ -159,109 +213,12 @@ public class BusinessAttendance {
             response.getListMessage().add("Error: El servicio no funciona por el momento.");
             return response;
         } finally {
-            if (tempFile != null && tempFile.exists()) {
-                tempFile.delete();
+            for (File f : tempFilesRafaga) {
+                if (f.exists()) {
+                    f.delete();
+                }
             }
         }
-    }
-
-    public Map<String, Object> syncOfflineRecords(String userId, List<RequestAttendanceSync> records) {
-        Map<String, Object> res = new HashMap<>();
-        int procesados = 0;
-        int rechazados = 0;
-
-        for (RequestAttendanceSync record : records) {
-            try {
-                // 1. Re-verificar con Python
-                ResponseFaceVerification serverResult = pythonFaceRecognitionHelper
-                        .verificarRostroBase64(record.getBase64Image(), record.getIdUser());
-
-                // 2. Aplicar umbral del servidor (RF-12)
-                if (!serverResult.isVerified() || serverResult.getSimilarity() < 85.0) {
-                    rechazados++;
-                    continue;
-                }
-
-                // 3. Verificar duplicado (mismo usuario, misma hora ±1 min)
-                Optional<EntityUser> optionalUser = repositoryUser.findById(record.getIdUser());
-                if (!optionalUser.isPresent()) {
-                    rechazados++;
-                    continue;
-                }
-                EntityUser entityUser = optionalUser.get();
-
-                if (isDuplicateSync(entityUser, record.getRecordedAt())) {
-                    rechazados++;
-                    continue;
-                }
-
-                // 4. Guardar con metadatos de auditoría
-                EntityAttendance attendance = new EntityAttendance();
-                attendance.setIdAtendance(UUID.randomUUID().toString());
-                attendance.setParentUser(entityUser);
-                attendance.setRecordedAt(record.getRecordedAt());
-                attendance.setSyncedAt(new Date());
-                attendance.setClientSimilarity(record.getClientSimilarity());
-                attendance.setServerSimilarity(serverResult.getSimilarity());
-                attendance.setVerifiedByServer(true);
-                attendance.setStatus(record.getIsEntry());
-                attendance.setCreated_at(new Date());
-
-                repositoryAttendance.save(attendance);
-                procesados++;
-
-            } catch (Exception e) {
-                rechazados++;
-            }
-        }
-
-        res.put("type", "success");
-        res.put("procesados", procesados);
-        res.put("rechazados", rechazados);
-        return res;
-    }
-
-    private boolean isDuplicateSync(EntityUser user, Date recordedAt) {
-        List<EntityAttendance> recientes = repositoryAttendance
-                .findByParentUserOrderByCreated_atDesc(user);
-
-        for (EntityAttendance a : recientes) {
-            if (a.getRecordedAt() == null)
-                continue;
-            long diffMs = Math.abs(a.getRecordedAt().getTime() - recordedAt.getTime());
-            long diffMin = diffMs / (1000 * 60);
-            if (diffMin <= 1)
-                return true;
-        }
-        return false;
-    }
-
-    private String normalizeIpAddress(String ip) {
-        if (ip == null)
-            return null;
-
-        // Normalizar IPv6 loopback
-        if (ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1")) {
-            return "127.0.0.1";
-        }
-
-        // Normalizar localhost
-        if (ip.equals("localhost")) {
-            return "127.0.0.1";
-        }
-
-        return ip;
-    }
-
-    private boolean isSameNetwork(String ip1, String ip2) {
-        String normalizedIp1 = normalizeIpAddress(ip1);
-        String normalizedIp2 = normalizeIpAddress(ip2);
-
-        if (normalizedIp1 == null || normalizedIp2 == null)
-            return false;
-
-        // Comparación exacta después de normalizar
-        return normalizedIp1.equals(normalizedIp2);
     }
 
     public Map<String, Object> getByUser(String userId) {
@@ -279,12 +236,163 @@ public class BusinessAttendance {
         EntityUser entityUser = optionalUser.get();
 
         List<EntityAttendance> attendances = repositoryAttendance
-                .findByParentUserOrderByCreated_atDesc(entityUser);
+                .findByParentUserOrderByEventTimestampDesc(entityUser);
 
         res.put("type", "success");
         res.put("message", "Asistencias obtenidas correctamente");
         res.put("data", attendances);
 
         return res;
+    }
+
+    // RF-30/31: Residente consulta su propia asistencia con filtros y paginación
+    public Map<String, Object> getByFilters(String userId, String fechaInicio, String fechaFin,
+            String tipo, int page, int size) {
+        Map<String, Object> res = new HashMap<>();
+
+        Optional<EntityUser> optionalUser = repositoryUser.findById(userId);
+        if (!optionalUser.isPresent()) {
+            res.put("type", "error");
+            res.put("message", "Usuario no encontrado");
+            return res;
+        }
+
+        EntityUser user = optionalUser.get();
+        Date inicio = parseFecha(fechaInicio, false);
+        Date fin = parseFecha(fechaFin, true);
+        EntityAttendance.AttendanceEventType tipoEvento = parseTipo(tipo);
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+
+        org.springframework.data.domain.Page<EntityAttendance> resultado = repositoryAttendance.findByFilters(user,
+                inicio, fin, tipoEvento, pageable);
+
+        res.put("type", "success");
+        res.put("message", "Asistencias obtenidas correctamente");
+        res.put("data", new ResponseAttendancePage(resultado));
+        return res;
+    }
+
+    /**
+     * SUPER_ADMIN puede ver cualquier residencia (o todas, si no especifica).
+     * ADMIN normal queda forzado a su propia residencia sin importar qué pida.
+     */
+    private String resolveResidenceScope(String adminId, String requestedIdResidence) {
+        Optional<EntityAdmin> adminOpt = repositoryAdmin.findById(adminId);
+        if (!adminOpt.isPresent()) {
+            return requestedIdResidence;
+        }
+        EntityAdmin admin = adminOpt.get();
+        if (admin.getRole() == EntityAdmin.AdminRole.SUPER_ADMIN) {
+            return requestedIdResidence;
+        }
+        return admin.getParentResidence().getIdResidence();
+    }
+
+    // RF-30/31: Admin consulta asistencia de cualquier residente con filtros
+    public Map<String, Object> getByFiltersAdmin(String adminId, String idUser, String fechaInicio,
+            String fechaFin, String tipo, int page, int size) {
+        Map<String, Object> res = new HashMap<>();
+
+        Date inicio = parseFecha(fechaInicio, false);
+        Date fin = parseFecha(fechaFin, true);
+        String idResidence = resolveResidenceScope(adminId, null);
+        EntityAttendance.AttendanceEventType tipoEvento = parseTipo(tipo);
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+
+        org.springframework.data.domain.Page<EntityAttendance> resultado = repositoryAttendance
+                .findByFiltersAdmin(inicio, fin, tipoEvento, idUser, idResidence, pageable);
+
+        res.put("type", "success");
+        res.put("message", "Asistencias obtenidas correctamente");
+        res.put("data", new ResponseAttendancePage(resultado));
+        return res;
+    }
+
+    public Map<String, Object> getResumenKPI(String adminId, String idResidenceParam) {
+        Map<String, Object> res = new HashMap<>();
+        String idResidence = resolveResidenceScope(adminId, idResidenceParam);
+
+        long totalResidentes;
+        if (idResidence == null || idResidence.isEmpty()) {
+            totalResidentes = repositoryUser.findAll().stream()
+                    .filter(u -> Boolean.TRUE.equals(u.getActive()))
+                    .count();
+        } else {
+            totalResidentes = repositoryUser.countActivosByResidencia(idResidence);
+        }
+
+        long presentes;
+        if (idResidence == null || idResidence.isEmpty()) {
+            presentes = repositoryUser.findAll().stream()
+                    .filter(u -> Boolean.TRUE.equals(u.getActive()) && Boolean.TRUE.equals(u.getPresente()))
+                    .count();
+        } else {
+            presentes = repositoryUser.countPresentesByResidencia(idResidence);
+        }
+        long ausentes = totalResidentes - presentes;
+
+        res.put("type", "success");
+        res.put("totalResidentes", totalResidentes);
+        res.put("presentes", presentes);
+        res.put("ausentes", ausentes < 0 ? 0 : ausentes);
+        res.put("fecha", java.time.LocalDate.now().toString());
+
+        return res;
+    }
+
+    private Date parseFecha(String fecha, boolean finDelDia) {
+        if (fecha == null || fecha.isEmpty())
+            return null;
+        try {
+            java.time.LocalDate localDate = java.time.LocalDate.parse(fecha);
+            if (finDelDia) {
+                return java.sql.Date.valueOf(localDate.plusDays(1));
+            }
+            return java.sql.Date.valueOf(localDate);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public PythonFaceRecognitionHelper getPythonFaceRecognitionHelper() {
+        return pythonFaceRecognitionHelper;
+    }
+
+    private void registrarIntentoFallido(EntityUser user, String motivo, String ssid, String bssid,
+            double similarity, String description) {
+        // Anti-spam: no registrar si ya hay un intento fallido en los últimos 2 minutos
+        Optional<EntityAttendance> ultimoFallo = repositoryAttendance.findLastFailedAttempt(user);
+        if (ultimoFallo.isPresent()) {
+            long diffMinutes = (new Date().getTime() - ultimoFallo.get().getEventTimestamp().getTime()) / (1000 * 60);
+            if (diffMinutes < 2) {
+                return; // ya hay un fallo reciente, no inundar la tabla
+            }
+        }
+
+        EntityAttendance fallido = new EntityAttendance();
+        fallido.setIdAtendance(UUID.randomUUID().toString());
+        fallido.setParentUser(user);
+        fallido.setEventTimestamp(new Date());
+        fallido.setEventType(EntityAttendance.AttendanceEventType.INTENTO_FALLIDO);
+        fallido.setEsAnomalia(true); // todo intento fallido es una anomalía a revisar
+        fallido.setMotivoFallo(motivo);
+        fallido.setSsid(ssid);
+        fallido.setBssid(bssid);
+        fallido.setServerSimilarity(similarity);
+        fallido.setDescription(description);
+        fallido.setCreated_at(new Date());
+        repositoryAttendance.save(fallido);
+    }
+
+    private EntityAttendance.AttendanceEventType parseTipo(String tipo) {
+        if (tipo == null || tipo.isEmpty())
+            return null;
+        try {
+            return EntityAttendance.AttendanceEventType.valueOf(tipo);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

@@ -12,13 +12,18 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.epiis.projectcasaketteler.dto.request.RequestDocumentGeneralInsert;
 import com.epiis.projectcasaketteler.dto.response.ResponseDocumentGeneralInsert;
 import com.epiis.projectcasaketteler.entity.EntityDocumentGeneral;
 import com.epiis.projectcasaketteler.entity.EntityUser;
+import com.epiis.projectcasaketteler.exception.DocumentAccessException;
 import com.epiis.projectcasaketteler.helper.DocumentValidationHelper;
 import com.epiis.projectcasaketteler.repository.RepositoryDocumentGeneral;
 import com.epiis.projectcasaketteler.repository.RepositoryUser;
@@ -27,15 +32,19 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 public class BusinessDocumentGeneral {
 
 	@Autowired
-	RepositoryDocumentGeneral repositoryDocumentGeneral;
+	private RepositoryDocumentGeneral repositoryDocumentGeneral;
 
 	@Autowired
-	RepositoryUser repositoryUser;
+	private RepositoryUser repositoryUser;
 
 	@Autowired
-	DocumentValidationHelper documentValidationHelper;
+	private DocumentValidationHelper documentValidationHelper;
 
-	private String storageDir = "storage";
+	@Autowired
+	private com.epiis.projectcasaketteler.helper.DocumentNameHelper documentNameHelper;
+
+	@Value("${app.storage.path}")
+	private String storageDir;
 
 	public ResponseDocumentGeneralInsert insert(RequestDocumentGeneralInsert request) throws Exception {
 		ResponseDocumentGeneralInsert response = new ResponseDocumentGeneralInsert();
@@ -88,7 +97,8 @@ public class BusinessDocumentGeneral {
 			return response;
 		}
 
-		Path storagePath = Paths.get(storageDir + "/DocumentGeneral/" + entityUser.getFirstName() + "/" + request.getType());
+		Path storagePath = Paths
+				.get(storageDir + "/DocumentGeneral/" + entityUser.getIdUser() + "/" + request.getType());
 
 		if (!Files.exists(storagePath)) {
 			Files.createDirectories(storagePath);
@@ -101,7 +111,9 @@ public class BusinessDocumentGeneral {
 		}
 
 		String fileNameUUID = UUID.randomUUID().toString();
-		String filePhysicalName = extension.isEmpty() ? fileNameUUID : fileNameUUID + "." + extension;
+		// Nombre legible para el usuario: TIPO_Nombre_Apellido_fecha.ext
+		String filePhysicalName = documentNameHelper.construirUnico(storagePath, request.getType(),
+				entityUser.getFirstName(), entityUser.getSurName(), extension);
 
 		Path filePath = storagePath.resolve(filePhysicalName);
 		Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
@@ -113,7 +125,7 @@ public class BusinessDocumentGeneral {
 		entityDocumentGeneral.setPeriod(
 				"PAGO".equalsIgnoreCase(request.getType()) ? getCurrentMonthPeriod()
 						: "NOTAS".equalsIgnoreCase(request.getType()) ? getCurrentSemesterPeriod() : null);
-		
+
 		entityDocumentGeneral.setNameDocumentGeneral(filePhysicalName);
 		entityDocumentGeneral.setExtensionDocumentGeneral(extension);
 		entityDocumentGeneral.setCreated_at(new java.sql.Date(new Date().getTime()));
@@ -188,6 +200,10 @@ public class BusinessDocumentGeneral {
 		EntityDocumentGeneral doc = optional.get();
 		doc.setStatus(EntityDocumentGeneral.DocumentStatus.valueOf(status));
 		doc.setObservations(observations);
+
+		if ("APROBADO".equals(status)) {
+			doc.setDownloadable(true);
+		}
 		doc.setUpdated_at(new java.sql.Date(new Date().getTime()));
 
 		repositoryDocumentGeneral.save(doc);
@@ -197,20 +213,48 @@ public class BusinessDocumentGeneral {
 		return response;
 	}
 
-	public org.springframework.core.io.Resource download(String idDocument) throws Exception {
+	public org.springframework.core.io.Resource download(String idDocument, String requesterId, String requesterRole)
+			throws Exception {
 		Optional<EntityDocumentGeneral> optional = repositoryDocumentGeneral.findById(idDocument);
 		if (!optional.isPresent()) {
-			throw new RuntimeException("Documento no encontrado");
+			throw new DocumentAccessException("Documento no encontrado", HttpStatus.NOT_FOUND);
 		}
 
 		EntityDocumentGeneral doc = optional.get();
-		String filePath = storageDir + "/DocumentGeneral/" +
-				doc.getParentUser().getFirstName() + "/" +
+		String idUser = doc.getParentUser().getIdUser();
+
+		boolean esAdmin = "ADMIN".equals(requesterRole) || "SUPER_ADMIN".equals(requesterRole);
+		boolean esDueno = idUser.equals(requesterId);
+
+		if (!esAdmin && !esDueno) {
+			throw new DocumentAccessException("Acceso denegado: este documento no te pertenece", HttpStatus.FORBIDDEN);
+		}
+
+		String filePath = storageDir + "/DocumentGeneral/" + idUser + "/" +
 				doc.getType() + "/" +
 				doc.getNameDocumentGeneral();
 
 		java.nio.file.Path path = java.nio.file.Paths.get(filePath);
 		return new org.springframework.core.io.UrlResource(path.toUri());
+	}
+
+	@ExceptionHandler({ RuntimeException.class, java.io.FileNotFoundException.class })
+	public ResponseEntity<Map<String, Object>> handleFileErrors(Exception e) {
+		Map<String, Object> response = new HashMap<>();
+		response.put("type", "error");
+
+		String msg = e.getMessage();
+		if (msg != null && msg.startsWith("Acceso denegado")) {
+			response.put("listMessage", java.util.List.of(msg));
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+		}
+
+		String message = msg != null && msg.contains("no encontrado")
+				? msg
+				: "El archivo solicitado no está disponible.";
+
+		response.put("listMessage", java.util.List.of(message));
+		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
 	}
 
 	private String getCurrentMonthPeriod() {

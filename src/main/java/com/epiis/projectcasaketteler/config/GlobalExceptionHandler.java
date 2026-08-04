@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import com.epiis.projectcasaketteler.exception.DocumentAccessException;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -19,5 +21,13 @@ public class GlobalExceptionHandler {
         response.put("listMessage",
                 java.util.List.of("Error: El archivo supera el límite de 10 MB"));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(DocumentAccessException.class)
+    public ResponseEntity<Map<String, Object>> handleDocumentAccess(DocumentAccessException e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("type", "error");
+        response.put("listMessage", java.util.List.of(e.getMessage()));
+        return ResponseEntity.status(e.getStatus()).body(response);
     }
 }

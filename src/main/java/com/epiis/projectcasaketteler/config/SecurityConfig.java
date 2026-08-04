@@ -34,41 +34,63 @@ public class SecurityConfig {
 						// ============================================
 						.requestMatchers(
 								"/casaketteler/login",
-								"/casaketteler/registeruser",
-								"/casaketteler/registeradmin",
-								"/casaketteler/registerresidence",
-								"/casaketteler/indexresidence",
-								"/casaketteler/showresidence/**",
-								"/casaketteler/network/**",
-								"/casaketteler/verify"
-
-						).permitAll()
+								"/casaketteler/attendance/health")
+						.permitAll()
 
 						// ============================================
 						// ENDPOINTS QUE SOLO SUPER_ADMIN
 						// ============================================
-						.requestMatchers("/casaketteler/deleteadmin/**").hasAuthority("SUPER_ADMIN")
+						.requestMatchers(
+								"/casaketteler/deleteadmin/**",
+								"/casaketteler/registeradmin",
+								"/casaketteler/updateadmin/**",
+								"/casaketteler/updatepasswordadmin/**",
+								"/casaketteler/registerresidence",
+								"/casaketteler/updateresidence/**",
+								"/casaketteler/deleteresidence/**",
+								"/casaketteler/indexresidence",
+								"/casaketteler/showresidence/**")
+						.hasAuthority("SUPER_ADMIN")
 
 						// ============================================
 						// ENDPOINTS QUE SOLO ADMIN o SUPER_ADMIN
 						// ============================================
 						.requestMatchers(
 								"/casaketteler/indexadmin",
+								"/casaketteler/showadmin/**",
+								"/casaketteler/registeruser",
 								"/casaketteler/deactivateuser/**",
 								"/casaketteler/deleteuser/**",
 								"/casaketteler/updateuser/**",
+								"/casaketteler/updatepassworduser/**",
 								"/casaketteler/resetpassword/**",
 								"/casaketteler/registerphoto",
-								"/casaketteler/documents/**", // listar y descargar documentos
-								"/casaketteler/resignation/**", // gestión renuncia admin
-								"/casaketteler/registerdocumentgeneral",
-								"/casaketteler/registerdocumententer",
-								"/casaketteler/resignation/**")
+								"/casaketteler/documents/*", // admin: listar documentos de un residente
+																// (documents/{idUser})
+								"/casaketteler/documents/*/status", // admin: cambiar estado de un documento
+								"/casaketteler/documententer/*", // admin: listar documentos de entrada de un residente
+								"/casaketteler/documententer/*/status", // admin: cambiar estado
+								"/casaketteler/resignation/*", // admin: ver renuncia de un residente
+																// (resignation/{idUser})
+								"/casaketteler/resignation/*/status", // admin: cambiar estado de una renuncia
+								"/casaketteler/resignation/download/*", // admin: descargar la renuncia subida por el
+																		// residente
+								"/casaketteler/assignresignation", // admin: asignar formato de renuncia
+								"/casaketteler/attendance/filter",
+								"/casaketteler/attendance/export",
+								"/casaketteler/attendance/kpi",
+								"/casaketteler/backup") // respaldo manual del sistema
 						.hasAnyAuthority("SUPER_ADMIN", "ADMIN")
 						// ============================================
-						// RESTO requieren autenticación (cualquier rol)
+						// RESTO DE LA API: requiere autenticación (cualquier rol)
 						// ============================================
-						.anyRequest().authenticated())
+						.requestMatchers("/casaketteler/**").authenticated()
+						// ============================================
+						// Archivos de la interfaz web (Angular) servidos por este mismo
+						// backend: son públicos porque son solo el "cascarón" de la app.
+						// La protección real está en la API de arriba.
+						// ============================================
+						.anyRequest().permitAll())
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 

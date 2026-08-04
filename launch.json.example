@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Spring Boot-ProjectcasakettelerApplication<projectcasaketteler>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.epiis.projectcasaketteler.ProjectcasakettelerApplication",
+      "projectName": "projectcasaketteler",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}

@@ -11,6 +11,6 @@ public class RequestUserInsert {
 	private String surName;
 	private String email;
 	private String password;
-	private int cellPhoneNumber;
-	private int cellPhoneEmergency;
+	private String cellPhoneNumber;
+	private String cellPhoneEmergency;
 }

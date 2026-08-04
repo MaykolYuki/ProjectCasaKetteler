@@ -1,12 +1,21 @@
 package com.epiis.projectcasaketteler.business;
 
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import javax.imageio.ImageIO;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -37,16 +46,16 @@ import com.epiis.projectcasaketteler.repository.RepositoryUser;
 @Service
 public class BusinessUser {
 	@Autowired
-	RepositoryUser repositoryUser;
+	private RepositoryUser repositoryUser;
 
 	@Autowired
-	RepositoryAdmin repositoryAdmin;
+	private RepositoryAdmin repositoryAdmin;
 
 	@Autowired
-	PasswordEncoderHelper passwordEncoderHelper;
+	private PasswordEncoderHelper passwordEncoderHelper;
 
 	@Autowired
-	ObtainIpAddressHelper obtainIpAddressHelper;
+	private ObtainIpAddressHelper obtainIpAddressHelper;
 
 	@Autowired
 	private JwtHelper jwtHelper;
@@ -54,13 +63,19 @@ public class BusinessUser {
 	@Autowired
 	private EmailHelper emailHelper;
 
+	@Value("${app.storage.path}")
+	private String storagePath;
+
 	private BCryptPasswordEncoder passwordEncoder() {
 		return passwordEncoderHelper.passwordEncoder();
 	}
 
+	private static final java.security.SecureRandom secureRandom = new java.security.SecureRandom();
+
 	// LOGIN CORREGIDO
 	public ResponseLogin login(RequestLogin request) {
 		ResponseLogin response = new ResponseLogin();
+		final String MENSAJE_GENERICO = "Credenciales incorrectas.";
 
 		try {
 			// PRIMERO: Buscar en ADMIN
@@ -69,17 +84,48 @@ public class BusinessUser {
 			if (adminOptional.isPresent()) {
 				EntityAdmin admin = adminOptional.get();
 
+				if (admin.getLockedUntil() != null && admin.getLockedUntil().after(new Date())) {
+					long minutosRestantes = (admin.getLockedUntil().getTime() - new Date().getTime()) / (1000 * 60);
+					response.setType("error");
+					response.getListMessage().add("Cuenta bloqueada. Intente en " + minutosRestantes + " minuto(s).");
+					return response;
+				}
+
 				if (admin.getActive() == null || !admin.getActive()) {
 					response.setType("error");
-					response.getListMessage().add("Usuario desactivado");
+					response.getListMessage().add(MENSAJE_GENERICO);
 					return response;
 				}
 
 				if (!passwordEncoder().matches(request.getPassword(), admin.getPassword())) {
+					int intentos = admin.getLoginAttempts() == null ? 0 : admin.getLoginAttempts();
+					intentos++;
+					admin.setLoginAttempts(intentos);
+
+					if (intentos >= 5) {
+						Date bloqueoHasta = new Date(new Date().getTime() + 15 * 60 * 1000);
+						admin.setLockedUntil(bloqueoHasta);
+						admin.setLoginAttempts(0);
+						repositoryAdmin.save(admin);
+						response.setType("error");
+						response.getListMessage().add("Cuenta bloqueada. Intente en 15 minuto(s).");
+						return response;
+					}
+
+					repositoryAdmin.save(admin);
 					response.setType("error");
-					response.getListMessage().add("Credenciales incorrectas");
+					response.getListMessage().add(MENSAJE_GENERICO);
 					return response;
 				}
+
+				// Login exitoso — resetear intentos
+				admin.setLoginAttempts(0);
+				admin.setLockedUntil(null);
+				// Sesión única: invalida cualquier token emitido antes de ahora (otros
+				// dispositivos). Se resta un margen porque el "iat" del JWT está en
+				// segundos; sin él, el token recién emitido podría rechazarse a sí mismo.
+				admin.setTokenValidAfter(new Date(System.currentTimeMillis() - 5000));
+				repositoryAdmin.save(admin);
 
 				String token = jwtHelper.generateToken(admin.getIdAdmin(), admin.getEmail(),
 						admin.getRole().toString());
@@ -90,9 +136,8 @@ public class BusinessUser {
 				response.setRole(admin.getRole().toString());
 				response.setFirstName(admin.getFirstName());
 				response.setSurName(admin.getSurName());
-				response.setFirstLogin(false); // Admins no tienen firstLogin
+				response.setFirstLogin(false);
 				response.getListMessage().add("Login exitoso");
-
 				return response;
 			}
 
@@ -102,47 +147,51 @@ public class BusinessUser {
 			if (userOptional.isPresent()) {
 				EntityUser user = userOptional.get();
 
-				System.out.println("=== USUARIO ENCONTRADO ===");
-				System.out.println("Email: " + user.getEmail());
-				System.out.println("Password en BD: " + user.getPassword());
-				System.out.println("Password recibida: " + request.getPassword());
-
-				// VERIFICAR ACTIVO PRIMERO
-				System.out.println("Active: " + user.getActive());
-				if (user.getActive() == null || !user.getActive()) {
-					System.out.println("ERROR: Usuario inactivo");
+				if (user.getLockedUntil() != null && user.getLockedUntil().after(new Date())) {
+					long minutosRestantes = (user.getLockedUntil().getTime() - new Date().getTime()) / (1000 * 60);
 					response.setType("error");
-					response.getListMessage().add("Usuario desactivado");
+					response.getListMessage().add("Cuenta bloqueada. Intente en " + minutosRestantes + " minuto(s).");
 					return response;
 				}
 
-				// AHORA VERIFICAR CONTRASEÑA
-				boolean matches = passwordEncoder().matches(request.getPassword(), user.getPassword());
-				System.out.println("=== COMPARACIÓN DE CONTRASEÑA ===");
-				System.out.println("¿Coinciden? " + matches);
-
-				if (!matches) {
-					System.out.println("ERROR: Contraseña incorrecta");
-					response.setType("error");
-					response.getListMessage().add("Credenciales incorrectas");
-					return response;
-				}
-
-				System.out.println("LOGIN EXITOSO para residente");
-				// ----------------------
 				if (user.getActive() == null || !user.getActive()) {
 					response.setType("error");
-					response.getListMessage().add("Usuario desactivado, contacte al administrador");
+					response.getListMessage().add(MENSAJE_GENERICO);
 					return response;
 				}
 
 				if (!passwordEncoder().matches(request.getPassword(), user.getPassword())) {
+					int intentos = user.getLoginAttempts() == null ? 0 : user.getLoginAttempts();
+					intentos++;
+					user.setLoginAttempts(intentos);
+
+					if (intentos >= 5) {
+						Date bloqueoHasta = new Date(new Date().getTime() + 15 * 60 * 1000);
+						user.setLockedUntil(bloqueoHasta);
+						user.setLoginAttempts(0);
+						repositoryUser.save(user);
+						response.setType("error");
+						response.getListMessage().add("Cuenta bloqueada. Intente en 15 minuto(s).");
+						return response;
+					}
+
+					repositoryUser.save(user);
 					response.setType("error");
-					response.getListMessage().add("Credenciales incorrectas");
+					response.getListMessage().add(MENSAJE_GENERICO);
 					return response;
 				}
 
-				String token = jwtHelper.generateToken(user.getIdUser(), user.getEmail(), user.getRole().toString());
+				// Login exitoso — resetear intentos
+				user.setLoginAttempts(0);
+				user.setLockedUntil(null);
+				// Sesión única: invalida cualquier token emitido antes de ahora (otros
+				// dispositivos). Se resta un margen porque el "iat" del JWT está en
+				// segundos; sin él, el token recién emitido podría rechazarse a sí mismo.
+				user.setTokenValidAfter(new Date(System.currentTimeMillis() - 5000));
+				repositoryUser.save(user);
+
+				String token = jwtHelper.generateToken(user.getIdUser(), user.getEmail(),
+						user.getRole().toString());
 
 				response.setType("success");
 				response.setToken(token);
@@ -152,16 +201,12 @@ public class BusinessUser {
 				response.setSurName(user.getSurName());
 				response.setFirstLogin(user.getFirstLogin());
 				response.getListMessage().add("Login exitoso");
-
-				System.out.println("Contraseña en BD: " + user.getPassword());
-				System.out.println("Match: " + passwordEncoder().matches(request.getPassword(), user.getPassword()));
-
 				return response;
 			}
 
 			// No encontrado en ninguna tabla
 			response.setType("error");
-			response.getListMessage().add("Credenciales incorrectas");
+			response.getListMessage().add(MENSAJE_GENERICO);
 			return response;
 
 		} catch (Exception e) {
@@ -195,27 +240,38 @@ public class BusinessUser {
 			entityUser.setEmail(request.getEmail());
 			entityUser.setPassword(passwordEncoder().encode(temporalPassword));
 
-			// Convertir int a String
-			entityUser.setCellPhoneNumber(String.valueOf(request.getCellPhoneNumber()));
-			entityUser.setCellPhoneEmergency(String.valueOf(request.getCellPhoneEmergency()));
+			entityUser.setCellPhoneNumber(request.getCellPhoneNumber());
+			entityUser.setCellPhoneEmergency(request.getCellPhoneEmergency());
 
 			entityUser.setIpAddressLocal(obtainIpAddressHelper.getIp()); // USAR setIpAddressLocal
 			entityUser.setRole(UserRole.RESIDENTE);
 			entityUser.setActive(true);
 			entityUser.setFirstLogin(true);
-			entityUser.setTemporalPassword(temporalPassword);
 
 			repositoryUser.save(entityUser);
 			response.setTemporalPassword(temporalPassword);
 
+			// El correo puede fallar (sin conexion, o sin credenciales configuradas
+			// en una instalacion nueva) y eso NO debe impedir crear al residente:
+			// la contraseña temporal se muestra en pantalla igualmente.
+			boolean correoEnviado = false;
 			try {
 				emailHelper.sendTemporaryCredentials(request.getEmail(), request.getEmail(), temporalPassword);
+				correoEnviado = true;
 			} catch (Exception e) {
 				System.err.println("Error al enviar email: " + e.getMessage());
 			}
 
 			response.setType("success");
-			response.getListMessage().add("Usuario registrado exitosamente. Se enviaron las credenciales a su email.");
+			// El mensaje dice lo que realmente paso. Antes afirmaba siempre que se
+			// habia enviado el correo, asi que quien daba de alta al residente creia
+			// que le habian llegado las credenciales cuando no era cierto.
+			if (correoEnviado) {
+				response.getListMessage().add("Usuario registrado exitosamente. Se enviaron las credenciales a su email.");
+			} else {
+				response.getListMessage().add(
+						"Usuario registrado exitosamente. NO se pudo enviar el correo: entrega estas credenciales al residente.");
+			}
 
 			return response;
 
@@ -242,7 +298,7 @@ public class BusinessUser {
 
 		user.setPassword(passwordEncoder().encode(nuevaTemporalPassword));
 		user.setFirstLogin(true);
-		user.setTemporalPassword(nuevaTemporalPassword);
+		user.setTokenValidAfter(new Date());
 
 		repositoryUser.save(user);
 
@@ -284,7 +340,7 @@ public class BusinessUser {
 
 		user.setPassword(passwordEncoder().encode(request.getNewPassword()));
 		user.setFirstLogin(false);
-		user.setTemporalPassword(null);
+		user.setTokenValidAfter(new Date());
 		repositoryUser.save(user);
 
 		response.setType("success");
@@ -319,20 +375,67 @@ public class BusinessUser {
 		Map<String, Object> res = new HashMap<>();
 		ResponseUserGetById response = new ResponseUserGetById();
 
+		// Buscar primero en usuarios
 		Optional<EntityUser> entityUser = repositoryUser.findById(userId);
 
 		if (entityUser.isPresent()) {
+			EntityUser user = entityUser.get();
+
+			Map<String, Object> userData = new HashMap<>();
+			userData.put("idUser", user.getIdUser());
+			userData.put("firstName", user.getFirstName());
+			userData.put("surName", user.getSurName());
+			userData.put("email", user.getEmail());
+			userData.put("cellPhoneNumber", user.getCellPhoneNumber());
+			userData.put("cellPhoneEmergency", user.getCellPhoneEmergency());
+			userData.put("role", user.getRole());
+			userData.put("active", user.getActive());
+			userData.put("firstLogin", user.getFirstLogin());
+			userData.put("presente", user.getPresente());
+
+			if (user.getParentResidence() != null) {
+				userData.put("idResidence", user.getParentResidence().getIdResidence());
+				userData.put("residenceName", user.getParentResidence().getName());
+			}
+
 			response.setType("success");
 			response.getListMessage().add("Perfil obtenido correctamente");
 			res.put("message", response);
-			res.put("data", entityUser.get());
-		} else {
-			response.setType("error");
-			response.getListMessage().add("Usuario no encontrado");
-			res.put("message", response);
-			res.put("data", null);
+			res.put("data", userData);
+			return res;
 		}
 
+		// Si no es usuario, buscar en admins
+		Optional<EntityAdmin> entityAdmin = repositoryAdmin.findById(userId);
+
+		if (entityAdmin.isPresent()) {
+			EntityAdmin admin = entityAdmin.get();
+
+			Map<String, Object> adminData = new HashMap<>();
+			adminData.put("idUser", admin.getIdAdmin());
+			adminData.put("firstName", admin.getFirstName());
+			adminData.put("surName", admin.getSurName());
+			adminData.put("email", admin.getEmail());
+			adminData.put("role", admin.getRole());
+			adminData.put("active", admin.getActive());
+
+			if (admin.getParentResidence() != null) {
+				adminData.put("idResidence", admin.getParentResidence().getIdResidence());
+				adminData.put("residenceName", admin.getParentResidence().getName());
+			}
+
+			response.setType("success");
+			response.getListMessage().add("Perfil obtenido correctamente");
+			res.put("message", response);
+			res.put("data", adminData);
+			return res;
+		}
+
+		// No encontrado en ninguna tabla
+		response.setType("error");
+		response.getListMessage().add("Usuario no encontrado");
+		res.put("message", response);
+		res.put("data", null);
 		return res;
 	}
 
@@ -347,8 +450,8 @@ public class BusinessUser {
 
 			entityUser.setFirstName(request.getFirstName());
 			entityUser.setSurName(request.getSurName());
-			entityUser.setCellPhoneNumber(String.valueOf(request.getCellPhoneNumber()));
-			entityUser.setCellPhoneEmergency(String.valueOf(request.getCellPhoneEmergency()));
+			entityUser.setCellPhoneNumber(request.getCellPhoneNumber());
+			entityUser.setCellPhoneEmergency(request.getCellPhoneEmergency());
 
 			repositoryUser.save(entityUser);
 
@@ -380,13 +483,37 @@ public class BusinessUser {
 	public Map<String, Object> getById(String idUser) {
 		ResponseUserGetById response = new ResponseUserGetById();
 		Map<String, Object> res = new HashMap<>();
-		Optional<EntityUser> entityUser = repositoryUser.findById(idUser);
+		Optional<EntityUser> optional = repositoryUser.findById(idUser);
+
+		if (optional.isEmpty()) {
+			response.setType("error");
+			response.getListMessage().add("Usuario no encontrado");
+			res.put("message", response);
+			res.put("data", null);
+			return res;
+		}
+
+		EntityUser entityUser = optional.get();
+
+		// Proyección plana: solo los campos que el formulario de edición necesita.
+		// Evita serializar la entidad completa (fotos, asistencias, documentos) y
+		// expone idResidence, que en la entidad va anidado (@JsonBackReference).
+		Map<String, Object> data = new HashMap<>();
+		data.put("idUser", entityUser.getIdUser());
+		data.put("firstName", entityUser.getFirstName());
+		data.put("surName", entityUser.getSurName());
+		data.put("email", entityUser.getEmail());
+		data.put("idResidence", entityUser.getParentResidence() != null
+				? entityUser.getParentResidence().getIdResidence()
+				: null);
+		data.put("cellPhoneNumber", entityUser.getCellPhoneNumber());
+		data.put("cellPhoneEmergency", entityUser.getCellPhoneEmergency());
+		data.put("active", entityUser.getActive());
 
 		response.setType("success");
 		response.getListMessage().add("Usuario extraído correctamente");
-
 		res.put("message", response);
-		res.put("data", entityUser);
+		res.put("data", data);
 
 		return res;
 	}
@@ -417,9 +544,15 @@ public class BusinessUser {
 			entityUser.setFirstName(request.getFirstName());
 			entityUser.setSurName(request.getSurName());
 			entityUser.setEmail(request.getEmail());
-			entityUser.setCellPhoneNumber(String.valueOf(request.getCellPhoneNumber()));
-			entityUser.setCellPhoneEmergency(String.valueOf(request.getCellPhoneEmergency()));
+			entityUser.setCellPhoneNumber(request.getCellPhoneNumber());
+			entityUser.setCellPhoneEmergency(request.getCellPhoneEmergency());
 			entityUser.setIpAddressLocal(obtainIpAddressHelper.getIp());
+
+			// Solo cambia la contraseña si el admin escribió una nueva
+			// (el formulario la deja en blanco para no tocarla).
+			if (request.getPassword() != null && !request.getPassword().isBlank()) {
+				entityUser.setPassword(passwordEncoder().encode(request.getPassword()));
+			}
 
 			repositoryUser.save(entityUser);
 
@@ -463,9 +596,53 @@ public class BusinessUser {
 		String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$";
 		StringBuilder password = new StringBuilder();
 		for (int i = 0; i < 10; i++) {
-			int index = (int) (Math.random() * chars.length());
+			int index = secureRandom.nextInt(chars.length());
 			password.append(chars.charAt(index));
 		}
 		return password.toString();
+	}
+
+	// Devuelve la mejor foto del residente como un thumbnail JPEG (~256px, comprimido)
+	// para mostrarla en el perfil sin cargar la imagen completa. null si no hay foto.
+	public byte[] getMyPhoto(String userId) {
+		Optional<EntityUser> optional = repositoryUser.findById(userId);
+		if (optional.isEmpty()) {
+			return null;
+		}
+		String best = optional.get().getBestPhotoReference();
+		if (best == null || best.isBlank()) {
+			return null;
+		}
+
+		File foto = new File(storagePath + "/Photo/" + userId + "/" + best);
+		if (!foto.exists()) {
+			return null;
+		}
+
+		try {
+			BufferedImage original = ImageIO.read(foto);
+			if (original == null) {
+				return null;
+			}
+
+			int maxLado = 256;
+			int w = original.getWidth();
+			int h = original.getHeight();
+			double escala = Math.min(1.0, (double) maxLado / Math.max(w, h));
+			int nw = Math.max(1, (int) Math.round(w * escala));
+			int nh = Math.max(1, (int) Math.round(h * escala));
+
+			BufferedImage thumb = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_RGB);
+			Graphics2D g = thumb.createGraphics();
+			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			g.drawImage(original, 0, 0, nw, nh, null);
+			g.dispose();
+
+			ByteArrayOutputStream baos = new ByteArrayOutputStream();
+			ImageIO.write(thumb, "jpg", baos);
+			return baos.toByteArray();
+		} catch (Exception e) {
+			return null;
+		}
 	}
 }

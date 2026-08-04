@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -51,6 +52,7 @@ public class EntityUser {
 	private String email;
 
 	@Column(name = "password")
+	@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
 	private String password;
 
 	@Column(name = "cellPhoneNumber")
@@ -72,8 +74,23 @@ public class EntityUser {
 	@Column(name = "firstLogin")
 	private Boolean firstLogin = true;
 
-	@Column(name = "temporalPassword")
-	private String temporalPassword;
+	// Estado de presencia física: true = dentro de la residencia.
+	// Arranca en true (el residente empieza dentro). Se actualiza con
+	// cada evento de asistencia: ENTRADA -> true, SALIDA -> false.
+	@Column(name = "presente")
+	private Boolean presente = true;
+
+	@Column(name = "bestPhotoReference")
+	private String bestPhotoReference;
+
+	@Column(name = "loginAttempts")
+	private Integer loginAttempts = 0;
+
+	@Column(name = "lockedUntil")
+	private Date lockedUntil;
+
+	@Column(name = "tokenValidAfter")
+	private Date tokenValidAfter;
 
 	@Column(name = "created_at")
 	private Date created_at;

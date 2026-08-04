@@ -24,10 +24,10 @@ import com.epiis.projectcasaketteler.helper.JwtHelper;
 @RequestMapping(path = "casaketteler")
 public class DocumentGeneralController {
 	@Autowired
-	BusinessDocumentGeneral businessDocumentGeneral;
+	private BusinessDocumentGeneral businessDocumentGeneral;
 
 	@Autowired
-	JwtHelper jwtHelper;
+	private JwtHelper jwtHelper;
 
 	@PostMapping(path = "registerdocumentgeneral", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public ResponseEntity<ResponseDocumentGeneralInsert> insert(@ModelAttribute RequestDocumentGeneralInsert request)
@@ -65,11 +65,22 @@ public class DocumentGeneralController {
 
 	@GetMapping(path = "documents/download/{idDocument}")
 	public ResponseEntity<org.springframework.core.io.Resource> download(
-			@PathVariable String idDocument) throws Exception {
-		org.springframework.core.io.Resource resource = businessDocumentGeneral.download(idDocument);
+			@PathVariable String idDocument,
+			@RequestHeader("Authorization") String token) throws Exception {
+		String requesterId = jwtHelper.extractUserId(token.substring(7));
+		String requesterRole = jwtHelper.extractRole(token.substring(7));
+		org.springframework.core.io.Resource resource = businessDocumentGeneral.download(idDocument, requesterId,
+				requesterRole);
 		return ResponseEntity.ok()
 				.header("Content-Disposition",
 						"attachment; filename=\"" + resource.getFilename() + "\"")
 				.body(resource);
+	}
+
+	@GetMapping(path = "mydocuments/all")
+	public ResponseEntity<Map<String, Object>> getMyAllDocuments(
+			@RequestHeader("Authorization") String token) {
+		String userId = jwtHelper.extractUserId(token.substring(7));
+		return ResponseEntity.ok(businessDocumentGeneral.getByUser(userId, null));
 	}
 }

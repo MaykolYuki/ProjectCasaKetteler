@@ -3,6 +3,7 @@ package com.epiis.projectcasaketteler.entity;
 import java.util.Date;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -47,6 +48,7 @@ public class EntityAdmin {
 	private String email;
 
 	@Column(name = "password")
+	@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
 	private String password;
 
 	@Enumerated(EnumType.STRING)
@@ -55,6 +57,15 @@ public class EntityAdmin {
 
 	@Column(name = "active")
 	private Boolean active = true;
+
+	@Column(name = "loginAttempts")
+	private Integer loginAttempts = 0;
+
+	@Column(name = "lockedUntil")
+	private Date lockedUntil;
+
+	@Column(name = "tokenValidAfter")
+	private Date tokenValidAfter;
 
 	@Column(name = "created_at")
 	private Date created_at;

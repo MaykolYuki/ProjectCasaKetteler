@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -16,11 +17,20 @@ import java.util.function.Function;
 @Component
 public class JwtHelper {
 
-    @Value("${jwt.secret:mySecretKeyForJWTTokenGenerationAndValidation2025}")
+    // Sin valor por defecto: si falta jwt.secret, la app no arranca.
+    @Value("${jwt.secret}")
     private String secret;
 
     @Value("${jwt.expiration:86400000}") // 24 horas en milisegundos
     private Long expiration;
+
+    @PostConstruct
+    private void validateSecret() {
+        if (secret == null || secret.getBytes().length < 32) {
+            throw new IllegalStateException(
+                    "jwt.secret debe estar configurado y tener al menos 32 bytes (256 bits) para HS256.");
+        }
+    }
 
     private Key getSigningKey() {
         byte[] keyBytes = secret.getBytes();
@@ -80,5 +90,9 @@ public class JwtHelper {
     public Boolean validateToken(String token, String email) {
         final String extractedEmail = extractEmail(token);
         return (extractedEmail.equals(email) && !isTokenExpired(token));
+    }
+
+    public Date extractIssuedAt(String token) {
+        return extractClaim(token, Claims::getIssuedAt);
     }
 }

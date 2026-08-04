@@ -31,6 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+!.vscode/launch.json
 
 
 # Entornos virtuales de Python
@@ -51,3 +52,40 @@ __pycache__/
 
 # Almacenamiento local de imágenes y datos de prueba
 storage/
+
+todo_el_codigo_proyecto.txt
+src/main/resources/application.properties
+src/main/resources/application-dev.properties
+src/main/resources/application-prod.properties
+
+# Archivos de configuración local con credenciales privadas
+.env
+# Logs generados por el lanzador del sistema
+logs/
+
+# Interfaz web copiada al servidor (se genera desde el proyecto Angular)
+frontend/
+
+# Respaldos de la base de datos
+backups/
+
+# Archivos temporales del reconocimiento facial (se generan al marcar asistencia)
+temp/
+
+# Carpeta de sesion de herramientas de IA
+.claude/
+
+# Volcado del codigo generado por empaquetar_todo.sh (el codigo real ya esta en el repo)
+todo_el_codigo_proyecto.txt
+
+# Resultado de construir-instalador.ps1 (se regenera; el .exe pesa ~73 MB)
+instalador/carga/
+instalador/salida/
+
+# Resultado de preparar-entrega.ps1 (se regenera)
+entrega/
+instalador/cache/
+
+# Volcados de la base de datos: llevan datos personales de los residentes y los
+# hashes de las contrasenas. Nunca deben viajar en el repositorio.
+respaldos/

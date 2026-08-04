@@ -1,57 +1,104 @@
 package com.epiis.projectcasaketteler.helper;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.epiis.projectcasaketteler.dto.response.ResponseFaceVerification;
+import com.epiis.projectcasaketteler.dto.response.ResponsePhotoFilter;
 
 import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class PythonFaceRecognitionHelper {
 
-    private static final String PYTHON_PATH = "C:/Users/yerry/Documents/Ingenieria de Software/BackendCasaKetteler/ProjectCasaKetteler/python_scripts/venv_perfecto/Scripts/python.exe";
-    private static final String SCRIPT_PATH = "python_scripts/ReconocimientoFacial.py";
+    private static final String SERVER_URL = "http://localhost:5000";
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+    private final ObjectMapper mapper = new ObjectMapper();
 
-    public ResponseFaceVerification verificarRostro(String rutaImagen, String idUser) {
+    @Value("${app.storage.path}")
+    private String storagePath;
+
+    @Value("${app.temp.path}")
+    private String tempPath;
+
+    private String postJson(String endpoint, Map<String, Object> body) throws Exception {
+        String jsonBody = mapper.writeValueAsString(body);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(SERVER_URL + endpoint))
+                .timeout(Duration.ofSeconds(120))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .build();
+        HttpResponse<String> response = httpClient.send(request,
+                HttpResponse.BodyHandlers.ofString());
+        return response.body();
+    }
+
+    public ResponsePhotoFilter seleccionarMejorFoto(String directorioUsuario, String idUser) {
         try {
-            java.io.File archivoCaptura = new java.io.File(rutaImagen);
-            java.io.File archivoDirectorioUsuario = new java.io.File("storage/Photo/" + idUser);
+            File dir = new File(directorioUsuario);
+            Map<String, Object> body = new HashMap<>();
+            body.put("directorio", dir.getAbsolutePath());
+            body.put("idUser", idUser);
 
-            String rutaAbsolutaCaptura = archivoCaptura.getAbsolutePath();
-            String rutaAbsolutaUsuario = archivoDirectorioUsuario.getAbsolutePath();
+            String json = postJson("/filtro", body);
+            return mapper.readValue(json, ResponsePhotoFilter.class);
 
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    PYTHON_PATH,
-                    SCRIPT_PATH,
-                    rutaAbsolutaCaptura,
-                    rutaAbsolutaUsuario);
+        } catch (Exception e) {
+            ResponsePhotoFilter error = new ResponsePhotoFilter();
+            error.setSuccess(false);
+            error.setError("Error conectando al servidor de reconocimiento: " + e.getMessage());
+            return error;
+        }
+    }
 
-            processBuilder.redirectErrorStream(true);
-            Process process = processBuilder.start();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+    public ResponseFaceVerification verificarRostro(String[] rutasImagenes, String idUser,
+            String bestPhotoFileName) {
+        try {
+            String directorioUsuario = storagePath + "/Photo/" + idUser;
+            String mejorFotoNombre;
 
-            StringBuilder jsonOutput = new StringBuilder();
-            String line;
-
-            while ((line = reader.readLine()) != null) {
-                if (line.trim().startsWith("{") && line.trim().endsWith("}")) {
-                    jsonOutput.append(line.trim());
+            if (bestPhotoFileName != null && !bestPhotoFileName.isEmpty()) {
+                mejorFotoNombre = bestPhotoFileName;
+            } else {
+                ResponsePhotoFilter filtro = seleccionarMejorFoto(directorioUsuario, idUser);
+                if (!filtro.isSuccess()) {
+                    ResponseFaceVerification error = new ResponseFaceVerification();
+                    error.setVerified(false);
+                    error.setError(filtro.getError());
+                    return error;
                 }
+                mejorFotoNombre = filtro.getBestImage();
             }
 
-            process.waitFor();
+            File mejorFoto = new File(directorioUsuario + "/" + mejorFotoNombre);
+            String rutaAbsolutaMejorFoto = mejorFoto.getAbsolutePath();
 
-            if (jsonOutput.length() == 0) {
-                throw new RuntimeException("Python no devolvió un JSON válido.");
+            java.util.List<String> imagenesBase64 = new java.util.ArrayList<>();
+            for (String ruta : rutasImagenes) {
+                byte[] imageBytes = java.nio.file.Files.readAllBytes(new File(ruta).toPath());
+                imagenesBase64.add(Base64.getEncoder().encodeToString(imageBytes));
             }
 
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(jsonOutput.toString(), ResponseFaceVerification.class);
+            Map<String, Object> body = new HashMap<>();
+            body.put("rutaReferencia", rutaAbsolutaMejorFoto);
+            body.put("imagenesBase64", imagenesBase64);
+            body.put("idUser", idUser);
+
+            String json = postJson("/verificar", body);
+            return mapper.readValue(json, ResponseFaceVerification.class);
 
         } catch (Exception e) {
             ResponseFaceVerification error = new ResponseFaceVerification();
@@ -61,92 +108,18 @@ public class PythonFaceRecognitionHelper {
         }
     }
 
-    public ResponseFaceVerification verificarRostroBase64(String base64Image, String idUser) {
-        File tempFile = null;
+    public boolean isServerRunning() {
         try {
-            byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Image);
-
-            String tempDir = "temp/";
-            new File(tempDir).mkdirs();
-
-            String fileName = "sync_" + idUser + "_" + System.currentTimeMillis() + ".jpg";
-            tempFile = new File(tempDir + fileName);
-
-            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
-                fos.write(imageBytes);
-            }
-
-            return verificarRostro(tempFile.getAbsolutePath(), idUser);
-
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(SERVER_URL + "/health"))
+                    .timeout(Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() == 200;
         } catch (Exception e) {
-            ResponseFaceVerification error = new ResponseFaceVerification();
-            error.setVerified(false);
-            error.setError("Error decodificando imagen: " + e.getMessage());
-            return error;
-        } finally {
-            if (tempFile != null && tempFile.exists()) {
-                tempFile.delete();
-            }
+            return false;
         }
     }
-    /**
-     * // -----------------------------------------------------------------
-     * // MÉTODO DE DIAGNÓSTICO DE RUTAS NATIVAS - ÚTIL PARA DESARROLLO
-     * // -----------------------------------------------------------------
-     * public static void main(String[] args) {
-     * System.out.println("=== DIAGNÓSTICO DE RUTAS NATIVAS ===");
-     * 
-     * // 1. Descubrir dónde está parada la app en este momento
-     * String rutaRaizJava = new java.io.File(".").getAbsolutePath();
-     * System.out.println("📍 Tu proyecto Java se está ejecutando en: " +
-     * rutaRaizJava);
-     * 
-     * // 2. Comprobar si el script de Python está en el lugar correcto
-     * java.io.File scriptPython = new java.io.File(SCRIPT_PATH);
-     * System.out.println("📂 ¿Se encuentra el script de Python en '" + SCRIPT_PATH
-     * + "'?: " + scriptPython.exists());
-     * if (scriptPython.exists()) {
-     * System.out.println(" -> Ruta absoluta real del script: " +
-     * scriptPython.getAbsolutePath());
-     * }
-     * 
-     * // 3. Comprobar la carpeta storage
-     * java.io.File carpetaStorage = new java.io.File("storage");
-     * System.out.println("📁 ¿Existe la carpeta 'storage' en la raíz?: " +
-     * carpetaStorage.exists());
-     * if (carpetaStorage.exists()) {
-     * System.out.println(" -> Ruta absoluta real de storage: " +
-     * carpetaStorage.getAbsolutePath());
-     * } else {
-     * System.out
-     * .println(" ⚠️ ATENCIÓN: Debes crear la carpeta 'storage' manualmente dentro
-     * de: " + rutaRaizJava);
-     * }
-     * 
-     * System.out.println("\n------------------------------------------------");
-     * System.out.println("Ejecutando script de prueba...");
-     * System.out.println("------------------------------------------------");
-     * 
-     * PythonFaceRecognitionHelper helper = new PythonFaceRecognitionHelper();
-     * String rutaImagenCapturada = "storage/captura.jpeg";
-     * String idUsuarioPrueba = "999";
-     * 
-     * // Ejecutamos la lógica
-     * ResponseFaceVerification respuesta =
-     * helper.verificarRostro(rutaImagenCapturada, idUsuarioPrueba);
-     * 
-     * System.out.println("=== RESPUESTA RECIBIDA DESDE PYTHON ===");
-     * System.out.println("¿Es el mismo usuario? (Verified): " +
-     * respuesta.isVerified()); // O .isVerified() según tus
-     * // getters
-     * 
-     * if (respuesta.getError() != null) {
-     * System.out.println("⚠️ ERROR DETECTADO POR PYTHON: " + respuesta.getError());
-     * } else {
-     * System.out.println("¡Conexión perfecta! El JSON se transformó correctamente
-     * en Java.");
-     * }
-     * System.out.println("================================================");
-     * }
-     */
 }

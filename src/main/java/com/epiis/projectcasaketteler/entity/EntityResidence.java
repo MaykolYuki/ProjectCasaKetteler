@@ -38,6 +38,9 @@ public class EntityResidence {
 	@Column(name = "wifiSsid")
 	private String wifiSsid;
 
+	@Column(name = "wifiBssid")
+	private String wifiBssid;
+
 	@JsonManagedReference
 	@OneToMany(mappedBy = "parentResidence", cascade = CascadeType.ALL)
 	private List<EntityAdmin> childAdmin;

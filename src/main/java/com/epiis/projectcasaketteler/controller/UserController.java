@@ -1,8 +1,11 @@
 package com.epiis.projectcasaketteler.controller;
 
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,15 +32,23 @@ import com.epiis.projectcasaketteler.dto.response.ResponseUserInsert;
 import com.epiis.projectcasaketteler.dto.response.ResponseUserUpdate;
 import com.epiis.projectcasaketteler.dto.response.ResponseUserUpdatePassword;
 import com.epiis.projectcasaketteler.helper.JwtHelper;
+import com.epiis.projectcasaketteler.helper.LoginRateLimiterHelper;
+import com.epiis.projectcasaketteler.helper.ObtainIpAddressHelper;
 
 @RestController
 @RequestMapping(path = "casaketteler")
 public class UserController {
 	@Autowired
-	BusinessUser businessUser;
+	private BusinessUser businessUser;
 
 	@Autowired
-	JwtHelper jwtHelper; // AGREGAR ESTO
+	private JwtHelper jwtHelper; // AGREGAR ESTO
+
+	@Autowired
+	private LoginRateLimiterHelper loginRateLimiterHelper;
+
+	@Autowired
+	private ObtainIpAddressHelper obtainIpAddressHelper;
 
 	@PostMapping(path = "registeruser", consumes = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<ResponseUserInsert> insert(@RequestBody RequestUserInsert request) {
@@ -47,7 +58,23 @@ public class UserController {
 
 	@PostMapping(path = "login", consumes = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<ResponseLogin> login(@RequestBody RequestLogin request) {
+		String ip = obtainIpAddressHelper.getIp();
+
+		if (loginRateLimiterHelper.estaBloqueada(ip)) {
+			ResponseLogin response = new ResponseLogin();
+			response.setType("error");
+			response.getListMessage().add("Demasiados intentos desde esta conexión. Intenta de nuevo más tarde.");
+			return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(response);
+		}
+
 		ResponseLogin response = businessUser.login(request);
+
+		if ("success".equals(response.getType())) {
+			loginRateLimiterHelper.registrarLoginExitoso(ip);
+		} else {
+			loginRateLimiterHelper.registrarIntentoFallido(ip);
+		}
+
 		return ResponseEntity.ok(response);
 	}
 
@@ -55,6 +82,20 @@ public class UserController {
 	public ResponseEntity<Map<String, Object>> getMyProfile(@RequestHeader("Authorization") String token) {
 		String userId = extractUserIdFromToken(token);
 		return ResponseEntity.ok(businessUser.getMyProfile(userId));
+	}
+
+	// Foto del residente (thumbnail comprimido) para el perfil.
+	@GetMapping(path = "myphoto")
+	public ResponseEntity<byte[]> getMyPhoto(@RequestHeader("Authorization") String token) {
+		String userId = extractUserIdFromToken(token);
+		byte[] foto = businessUser.getMyPhoto(userId);
+		if (foto == null) {
+			return ResponseEntity.notFound().build();
+		}
+		return ResponseEntity.ok()
+				.contentType(MediaType.IMAGE_JPEG)
+				.cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS))
+				.body(foto);
 	}
 
 	@PutMapping(path = "myprofile", consumes = MediaType.APPLICATION_JSON_VALUE)

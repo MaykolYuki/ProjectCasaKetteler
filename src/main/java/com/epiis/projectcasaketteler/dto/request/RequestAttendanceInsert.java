@@ -10,5 +10,7 @@ import lombok.Setter;
 public class RequestAttendanceInsert {
 	private String idUser;
 	private String description;
-	private MultipartFile file;
+	private MultipartFile[] files;
+	private String ssid;
+	private String bssid;
 }

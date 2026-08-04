@@ -19,30 +19,13 @@ import com.epiis.projectcasaketteler.repository.RepositoryResidence;
 public class NetworkController {
 
     @Autowired
-    RepositoryResidence repositoryResidence;
-
-    // Este endpoint devuelve la configuración de red esperada
-    // El frontend debe comparar con el SSID real del dispositivo
-    @GetMapping(path = "network/config")
-    public ResponseEntity<Map<String, Object>> getNetworkConfig() {
-        Map<String, Object> response = new HashMap<>();
-        Map<String, String> data = new HashMap<>();
-
-        // Estos valores deben configurarse por administrador
-        data.put("expectedSSID", "CasaKetteler_WiFi"); // SSID esperado
-        data.put("networkType", "WIFI");
-
-        response.put("success", true);
-        response.put("data", data);
-        response.put("message", "Configuración de red obtenida");
-
-        return ResponseEntity.ok(response);
-    }
+    private RepositoryResidence repositoryResidence;
 
     // Endpoint para verificar si el SSID proporcionado es válido
     @GetMapping(path = "network/verify")
     public ResponseEntity<Map<String, Object>> verifyNetwork(
-            @RequestParam String ssid,
+            @RequestParam(required = false) String ssid,
+            @RequestParam(required = false) String bssid,
             @RequestParam String idResidence) {
 
         Map<String, Object> response = new HashMap<>();
@@ -56,8 +39,18 @@ public class NetworkController {
             return ResponseEntity.ok(response);
         }
 
-        String expectedSSID = optional.get().getWifiSsid();
-        boolean isValid = expectedSSID != null && expectedSSID.equals(ssid);
+        EntityResidence residence = optional.get();
+        boolean isValid = false;
+
+        // Priorizar BSSID si está configurado
+        String expectedBSSID = residence.getWifiBssid();
+        String expectedSSID = residence.getWifiSsid();
+
+        if (expectedBSSID != null && !expectedBSSID.isEmpty()) {
+            isValid = expectedBSSID.equalsIgnoreCase(bssid);
+        } else if (expectedSSID != null && !expectedSSID.isEmpty()) {
+            isValid = expectedSSID.equals(ssid);
+        }
 
         response.put("success", true);
         response.put("isValid", isValid);

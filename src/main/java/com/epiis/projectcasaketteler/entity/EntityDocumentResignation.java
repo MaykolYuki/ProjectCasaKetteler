@@ -40,6 +40,15 @@ public class EntityDocumentResignation {
 		PENDIENTE, APROBADO, OBSERVADO, RECHAZADO
 	}
 
+	@Column(name = "formatFileName")
+	private String formatFileName; // nombre del archivo del formato en blanco
+
+	@Column(name = "formatExtension")
+	private String formatExtension;
+
+	@Column(name = "formatAssignedAt")
+	private Date formatAssignedAt;
+
 	@Enumerated(EnumType.STRING)
 	@Column(name = "status")
 	private ResignationStatus status = ResignationStatus.PENDIENTE;
