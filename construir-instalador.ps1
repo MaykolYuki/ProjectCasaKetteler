@@ -11,7 +11,8 @@
 #      .\construir-instalador.ps1 -ConModelos      # + modelos de IA (~340 MB)
 #      .\construir-instalador.ps1 -SinInternet     # + librerias Python (~2.5 GB)
 #
-#  El resultado queda en  instalador\salida\CasaKetteler-Instalador-1.0.exe
+#  El resultado queda en  instalador\salida\CasaKetteler-Instalador-<version>.exe
+#  (la version sale de CasaKetteler.iss; hoy: 1.1)
 # ============================================================================
 
 [CmdletBinding()]

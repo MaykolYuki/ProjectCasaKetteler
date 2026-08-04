@@ -22,14 +22,14 @@ Cómo instalar el sistema en la PC que quedará operando en la residencia.
 > sitios oficiales. Las opciones anteriores solo hacen falta si la red de destino es
 > lenta o está filtrada.
 
-Queda en `instalador\salida\CasaKetteler-Instalador-1.0.exe`. **Ese único archivo es
+Queda en `instalador\salida\CasaKetteler-Instalador-1.1.exe`. **Ese único archivo es
 todo lo que llevas** — dentro van el backend, la interfaz web, los scripts de
 reconocimiento, la documentación y el instalador.
 
 **En la computadora de la residencia:**
 
 ```
-clic derecho en  CasaKetteler-Instalador-1.0.exe  ->  Ejecutar como administrador
+clic derecho en  CasaKetteler-Instalador-1.1.exe  ->  Ejecutar como administrador
 ```
 
 Asistente en español: acepta, elige carpeta (por defecto `C:\CasaKetteler`) y listo.
@@ -319,7 +319,33 @@ Comprobaciones:
 |-----|------|
 | La web abre | `http://localhost:8001` |
 | Desde otra PC de la red | `http://<IP-DE-ESTA-PC>:8001` |
-| El login funciona | Entrar con la cuenta de administración |
+| El login funciona | Entrar con la cuenta de administración (ver 7.1) |
+
+### 7.1 Con qué cuenta se entra la primera vez
+
+En una instalación **nueva** la base de datos arranca vacía: hay tablas, pero ninguna
+cuenta. Como los residentes solo puede darlos de alta un administrador, el sistema
+quedaría inservible. Por eso, en el **primer arranque** el backend crea una cuenta de
+administración y la residencia por defecto.
+
+| Dato | Valor |
+|------|-------|
+| Usuario | `admin@casaketteler.local` |
+| Contraseña | **distinta en cada instalación**, la genera el instalador |
+
+La contraseña aparece en pantalla al terminar el instalador y también queda escrita en
+**`logs\instalacion-resumen.txt`**, dentro de la carpeta de instalación.
+
+> **Cámbiala al entrar por primera vez.** Es una cuenta `SUPER_ADMIN`: puede registrar
+> la residencia y dar de alta a otros administradores.
+
+> La contraseña se genera al azar en cada instalación a propósito. Una fija escrita en
+> el código sería la misma en todas las residencias, y quien viera el repositorio
+> entraría en cualquiera de ellas. Se generan 12 caracteres sin `I`, `O`, `l`, `0` ni
+> `1`, para que no se confundan al teclearla.
+
+Esto solo ocurre si **no existe ningún administrador**. En una instalación en marcha no
+se toca nada: no se pisan datos ni se recrean cuentas que se hayan borrado a propósito.
 
 ---
 
