@@ -1,5 +1,34 @@
 # Especificación de Requisitos — Texto actualizado
 
+> ## ✅ Estado: YA APLICADO
+>
+> Este documento es la **propuesta de redacción** que se preparó para el documento
+> oficial, y **ya fue incorporada** a `ESPECIFICACIÓN DE REQUISITOS.docx`.
+>
+> Al aplicarla, los requisitos **nuevos** no se agregaron al final sino **dentro de su
+> categoría**, así que recibieron números distintos a los que se proponen aquí. Los
+> números RF-36 a RF-40 ya existían en la especificación con otro significado
+> (filtros, tabla de horas, exportación, servicio de reconocimiento y red local).
+>
+> **Para citar requisitos, usa siempre la numeración del `.docx`**, que es la que
+> siguen la [matriz de trazabilidad](MATRIZ-TRAZABILIDAD.md) y el
+> [diseño de escenarios](DISENO-ESCENARIOS-UNITARIAS.md). Equivalencias:
+>
+> | Propuesto en este documento | Quedó en la especificación |
+> |-----------------------------|----------------------------|
+> | RF-36 · Sesión única por usuario | **RF-07** |
+> | RF-37 · Persistencia de sesión según el rol | **RF-08** |
+> | RF-40 · Acceso del administrador por navegador | **RF-09** |
+> | RF-38 · Anomalía por evento del mismo tipo | **RF-17** |
+> | RF-39 · Respaldos automáticos | **RF-35** |
+> | RNF-23 · Nombres de archivo legibles | **RNF-12** |
+> | RNF-24 · Arranque automático del servidor | **RNF-15** |
+> | RNF-22 · Aviso de servidor sin respuesta | **RNF-22** ⚠️ |
+>
+> ⚠️ En el `.docx` el número **RNF-22 aparece dos veces**: en la detección de vida
+> (*liveness*) y en el aviso de servidor sin respuesta. Conviene renumerar uno de los
+> dos en el documento oficial.
+
 Redacción lista para pegar en el documento oficial. Está organizada en tres bloques:
 
 1. **Requisitos a REEMPLAZAR** — cambia el texto viejo por el de aquí (mismo número).

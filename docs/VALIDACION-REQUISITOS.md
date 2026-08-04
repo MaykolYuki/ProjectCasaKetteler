@@ -4,6 +4,14 @@ Comparación de la especificación original (6.1–6.5) con **lo que el sistema 
 El proyecto evolucionó de forma importante, sobre todo en la arquitectura del
 reconocimiento facial.
 
+> ⚠️ **Este análisis usa la numeración ANTERIOR a la actualización.** Es el estudio que
+> dio origen a los cambios, así que conserva a propósito los números de entonces: aquí
+> RF-07 es la cámara frontal y RF-09 el modelo de eventos, mientras que en la
+> especificación vigente son la sesión única y el registro de la marca. Para citar
+> requisitos usa la numeración del `.docx`, que es la que siguen la
+> [matriz de trazabilidad](MATRIZ-TRAZABILIDAD.md) y el
+> [diseño de escenarios](DISENO-ESCENARIOS-UNITARIAS.md).
+
 **Leyenda de estado:**
 
 | Símbolo | Significado |

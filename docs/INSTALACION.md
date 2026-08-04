@@ -172,7 +172,7 @@ npx ng serve
 # Solo un grupo
 .\mvnw.cmd test -Dtest=BusinessAttendanceTest
 
-# Frontend (16 pruebas)
+# Frontend (20 pruebas)
 npx ng test --watch=false
 ```
 

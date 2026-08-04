@@ -23,9 +23,9 @@ versión actual de `ESPECIFICACIÓN DE REQUISITOS.docx`.
 | RF-03 | Verificación de rol en cada petición (RBAC) | `SecurityConfig`, `JwtRequestFilter` | Funcional | ✅ |
 | RF-04 | Módulo de gestión de residentes (crear/editar/desactivar/eliminar/reset) | `UserController`, `BusinessUser` | Funcional · PU-13 (desactivada) | ✅ |
 | RF-05 | Contraseña temporal al registrar | `BusinessUser.insert` | Funcional | ✅ |
-| RF-06 | Pantalla de perfil del residente | `myprofile`, frontend perfil | Funcional | ✅ |
-| RF-07 | Sesión única por usuario | `BusinessUser.login` (`tokenValidAfter`), `JwtRequestFilter` | ESC-U-02 · PU-09 / ESC-U-07 · PU-30, PU-31 | ✅ |
-| RF-08 | Persistencia de sesión distinta por rol | Frontend · utilidad de almacenamiento | ESC-U-07 · PU-27, PU-28 | ✅ |
+| RF-06 | Pantalla de perfil del residente | `myprofile`, frontend perfil | ESC-U-09 · PU-41, PU-42 | ✅ |
+| RF-07 | Sesión única por usuario | `BusinessUser.login` (`tokenValidAfter`), `JwtRequestFilter` | ESC-U-02 · PU-09 / ESC-U-07 · PU-30, PU-31 / ESC-U-09 · PU-39, PU-40 | ✅ |
+| RF-08 | Persistencia de sesión distinta por rol | Frontend · utilidad de almacenamiento | ESC-U-07 · PU-27, PU-28 / ESC-U-09 · PU-39, PU-40 | ✅ |
 | RF-09 | Acceso del admin por navegador servido por el backend | `config` interfaz web estática | Funcional | ✅ |
 | RF-10 | Activar cámara frontal para capturar rostro | Frontend/Capacitor (app Android) | Funcional | ✅ |
 | RF-11 | Ráfaga de imágenes + mediana de coincidencia | Servicio Python + `BusinessAttendance` | ESC-U-01 · PU-06 (rama de rechazo) | ✅ |
@@ -102,7 +102,7 @@ versión actual de `ESPECIFICACIÓN DE REQUISITOS.docx`.
 
 | Tipo de prueba | Requisitos que verifica |
 |----------------|--------------------------|
-| **Unitaria** (8.1) | RF-01, RF-03(parc.), RF-07, RF-08, RF-11, RF-12, RF-13, RF-14, RF-16, RF-17, RF-18, RF-19, RF-35, RF-36, RN-01, RN-02, RNF-02, RNF-03, RNF-10, RNF-12, RNF-15 |
+| **Unitaria** (8.1) | RF-01, RF-03(parc.), RF-06, RF-07, RF-08, RF-11, RF-12, RF-13, RF-14, RF-16, RF-17, RF-18, RF-19, RF-35, RF-36, RN-01, RN-02, RNF-02, RNF-03, RNF-10, RNF-12, RNF-15 |
 | **Carga** (8.2) | RNF-06, RNF-07 |
 | **Estrés** (8.3) | RNF-07 |
 | **Medición empírica** | RNF-05, RNF-21, RNF-22 |

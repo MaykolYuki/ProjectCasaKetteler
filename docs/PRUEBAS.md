@@ -128,6 +128,22 @@ MySQL.
 | PU-37 | Opción "Otros" | Usa el texto libre, sin espacios sobrantes | ✅ |
 | PU-38 | Salida sin motivo | No inventa ninguno (el formulario lo exige) | ✅ |
 
+#### Perfil entre sesiones (`perfil-entre-sesiones.spec.ts`)
+
+Pruebas de **regresión** de un fallo detectado en pruebas de uso: el perfil se guarda
+en una señal en memoria, y al cerrar sesión se limpiaban el token y el usuario pero no
+esa señal. Como la pantalla de perfil solo consulta al servidor cuando la señal está
+vacía, quien entraba después veía los datos del anterior: tras usar el sistema como
+administrador y entrar luego como residente, el perfil del residente mostraba el
+**correo del administrador**.
+
+| ID | Caso de prueba | Resultado esperado | Estado |
+|----|----------------|--------------------|:------:|
+| PU-39 | Cerrar sesión | Descarta el perfil que quedaba en memoria | ✅ |
+| PU-40 | Iniciar sesión | Descarta el perfil de la sesión anterior | ✅ |
+| PU-41 | Residente tras un administrador | Ve su propio correo, no el del administrador | ✅ |
+| PU-42 | Sin limpiar la memoria | Se mostrarían datos ajenos (comprueba que PU-41 detecta el fallo) | ✅ |
+
 ---
 
 ### Cómo ejecutar las pruebas
@@ -139,16 +155,21 @@ MySQL.
 # Solo un módulo
 .\mvnw.cmd test -Dtest=BusinessAttendanceTest
 
-# Frontend — 16 pruebas (en la carpeta del proyecto Angular)
+# Frontend — 20 pruebas (en la carpeta del proyecto Angular)
 npx ng test --watch=false
 ```
 
 > **Nota:** las pruebas del backend usan *mocks* y no requieren base de datos, con la
 > única excepción de la carga del contexto (PU-22), que sí necesita MySQL encendido.
 
+> ⚠️ En el frontend hay que usar **`ng test`**, no `vitest` directamente. El constructor
+> de Angular genera antes el entorno de pruebas (`init-testbed`, el DOM y el compilador);
+> al invocar `vitest` por su cuenta ese entorno no existe y las pruebas fallan por
+> `localStorage is not defined` o `TestBed.initTestEnvironment()`, aunque el código esté bien.
+
 ### Conclusión
 
-Las 38 pruebas unitarias se ejecutan satisfactoriamente y cubren las reglas centrales
+Las 42 pruebas unitarias se ejecutan satisfactoriamente y cubren las reglas centrales
 del sistema: la lógica de asistencia (alternancia entrada/salida, ventana de 5 minutos,
 detección de anomalías, validación por rostro y por red), la seguridad del acceso
 (bloqueo por intentos, sesión única, cuentas inactivas) y la integridad de los datos

@@ -7,20 +7,28 @@ el contexto desde cero.
 
 ## 1. Dónde quedó todo
 
+> Actualizado el **4 de agosto de 2026**, después de la presentación final.
+
 | Elemento | Estado |
 |----------|--------|
-| Backend, rama `pruebas` | Al día y subido |
+| Backend, ramas `pruebas` y `master` | Al día y subidas |
+| Backend, rama `develop` | **Pendiente de un pull request** (está protegida) |
 | Frontend, rama `main` | Al día y subido |
 | Interfaz web que sirve el backend | Al día, con URL relativa (funciona en cualquier red) |
 | Accesibilidad | 219 hallazgos → 1; ese último ya corregido |
-| Instalador `.exe` | Generado, 335 MB, con Python y modelos incluidos |
-| APK versión 1.1 | **Compilado pero SIN publicar** |
+| Instalador `.exe` | Generado (versión 1.1), con Python y modelos incluidos |
+| APK versión 1.1 | **Publicado** en la página de descarga |
+| Presentación final | Realizada |
 | Despliegue en la nube | Evaluado; decisión pendiente |
 
-### Lo único que bloquea
+### Lo que quedó pendiente
 
-El APK 1.1 apunta a `http://192.168.101.3:8001`, una IP que ya no existe. **No debe
-repartirse así.** Hay que recompilarlo con la dirección definitiva y publicarlo.
+1. **Fusionar `pruebas` en `develop`** mediante pull request: la rama está protegida y
+   no admite subida directa.
+2. **Decidir el acceso desde fuera de la residencia** (apartado 2). Mientras tanto el
+   sistema funciona en la red local, que es para lo que se diseñó.
+3. Seis ajustes menores en la especificación, listados en
+   [CORRECCIONES-ESPECIFICACION.md](CORRECCIONES-ESPECIFICACION.md).
 
 ---
 
@@ -39,8 +47,9 @@ y el plan gratuito da 512 MB. Además el servicio se apaga tras 15 minutos de
 inactividad y tarda cerca de un minuto en despertar, lo que hace inviable marcar
 asistencia.
 
-**Sin decidir esto, nada más avanza**, porque la dirección del servidor determina cómo
-se compila el APK.
+Esta decisión solo afecta al **acceso desde fuera** de la residencia. El APK publicado
+apunta a la dirección de la red local, que es el modo de uso previsto; si más adelante
+se abre el acceso externo, habrá que recompilarlo con la dirección nueva.
 
 ---
 
