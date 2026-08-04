@@ -389,9 +389,25 @@ cd android
 
 ### Cómo lo instalan los residentes
 
-Se les pasa el archivo por WhatsApp, Drive o USB. Al abrirlo, Android pedirá
-permitir *"instalar aplicaciones de origen desconocido"* para la app desde la que
-lo abren. **No hace falta el modo desarrollador.**
+**Lo más sencillo: pasarles el enlace de la página de descarga.**
+
+> ### 📱 https://casaketteler.netlify.app
+>
+> Se abre desde el celular y tiene un solo botón. La página detecta si se entra desde
+> una computadora y avisa de que la app es solo para Android.
+
+Al abrir el archivo descargado, Android pedirá permitir *"instalar aplicaciones de
+origen desconocido"* para la app desde la que se abre (el navegador). **No hace falta
+el modo desarrollador.** También se puede repartir el `.apk` por WhatsApp, Drive o USB,
+pero el enlace evita explicarle a cada residente dónde guardó el archivo.
+
+**Para publicar una versión nueva** en esa página, se copia el `.apk` generado al
+repositorio [CasaKetteler-Pagina](https://github.com/192200-coder/CasaKetteler-Pagina)
+con el nombre `CasaKetteler.apk`, se actualiza el número de versión en `index.html` y se
+sube. Netlify despliega solo.
+
+> Sube el `versionCode` en `android/app/build.gradle` en cada versión nueva. Sin eso,
+> Android no instala la nueva sobre la anterior.
 
 > 🔑 **La llave de firma es irreemplazable.** Los archivos
 > `android/casaketteler-release.keystore` y `android/keystore.properties` deben estar

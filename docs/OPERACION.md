@@ -48,6 +48,10 @@ computadora es compartida y la sesión se cierra al cerrar el navegador.
 Los residentes **no** vuelven a iniciar sesión: su celular es personal y la app
 recuerda la sesión.
 
+> **¿Entra un residente nuevo?** Además de darlo de alta en *Gestión de usuarios*,
+> necesita la app. Pásale este enlace, que se abre desde el celular y tiene un solo
+> botón: **https://casaketteler.netlify.app**
+
 ---
 
 ## Respaldos

@@ -7,6 +7,9 @@ residentes mediante **reconocimiento facial**, validando además que la marca se
 - Los **residentes** marcan asistencia desde una app Android.
 - La **administradora** gestiona residentes, documentos y reportes desde el navegador.
 
+📱 **Descargar la app:** https://casaketteler.netlify.app — se abre desde el celular
+y tiene un solo botón.
+
 ---
 
 ## Índice de documentación
