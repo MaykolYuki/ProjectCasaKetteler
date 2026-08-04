@@ -85,3 +85,7 @@ instalador/salida/
 # Resultado de preparar-entrega.ps1 (se regenera)
 entrega/
 instalador/cache/
+
+# Volcados de la base de datos: llevan datos personales de los residentes y los
+# hashes de las contrasenas. Nunca deben viajar en el repositorio.
+respaldos/
